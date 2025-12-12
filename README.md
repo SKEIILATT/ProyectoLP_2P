@@ -17,6 +17,6 @@ Desarrollo colaborativo completo. Ambos integrantes participan en el desarrollo 
 
 **Tecnologías:**
 - **Frontend:** React + TypeScript (Dashboards, Recharts)
-- **Backend:** Laravel (API) + Python (RAG/Data Analysis)
+- **Backend:** PHP/Laravel (API) + Python (RAG/Data Analysis)
 - **IA:** LangChain, Ollama, ChromaDB
 
