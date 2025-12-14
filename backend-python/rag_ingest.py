@@ -2,7 +2,7 @@ import os
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_ollama import OllamaEmbeddings
 
 DOCUMENTS_PATH = "./documents/raw"
 CHROMA_PATH = "./documents/processed/chroma_db"
@@ -46,17 +46,33 @@ def cargar_docs():
         
 def guardar_en_chroma(chunks):
     #Creo los embeddings necesarios para guardarlos en el ChromaDB
+    print(f"Guardando {len(chunks)} chunks en ChromaDB...")
 
-    #Primero tengo que inicializar el modelo de embeddings de mi IA (en este caso, Ollama, pero podría ser cualquier IA si es que se tiene una API KEY)
-    embeddings = OllamaEmbeddings(model="mistral")
+    #Primero tengo que inicializar el modelo de embeddings de mi IA (en este caso, Ollama con nomic-embed-text)
+    embeddings = OllamaEmbeddings(model="nomic-embed-text")
 
-    #Creo la base de datos vectorial (ChromaDB)
-    Chroma.from_documents(
-        documents = chunks,
-        embedding = embeddings,
-        persist_directory = CHROMA_PATH
-    )
-    print(f"Base de datos guardadas en {CHROMA_PATH}")
+    #Procesar en lotes de 100 chunks para evitar timeouts
+    batch_size = 100
+    for i in range(0, len(chunks), batch_size):
+        batch = chunks[i:i+batch_size]
+        print(f"Procesando batch {i//batch_size + 1}/{(len(chunks)-1)//batch_size + 1} ({len(batch)} chunks)...")
+
+        if i == 0:
+            # Primer batch: crear la base de datos
+            vectorstore = Chroma.from_documents(
+                documents=batch,
+                embedding=embeddings,
+                persist_directory=CHROMA_PATH
+            )
+        else:
+            # Batches siguientes: agregar a la base existente
+            vectorstore = Chroma(
+                persist_directory=CHROMA_PATH,
+                embedding_function=embeddings
+            )
+            vectorstore.add_documents(batch)
+
+    print(f"Base de datos guardada en {CHROMA_PATH}")
 
 if __name__ == "__main__":
     print("Iniciando proceso de ingesta de documentos...\n")
