@@ -20,7 +20,7 @@ URL_NUMERADOR = "https://cloud-pro.senescyt.gob.ec/public.php/dav/files/FjESnmBk
 URL_DENOMINADOR = "https://cloud-pro.senescyt.gob.ec/public.php/dav/files/FjESnmBkDksaYRp/Denominadordeserción2022_300924.xlsx"
 
 #Rutas donde guardar los archivos
-CARPETA_DATOS = "../datos/estadisticas_ecuador"
+CARPETA_DATOS = "../data/processed/estadisticas_ecuador"
 ARCHIVO_NUMERADOR = os.path.join(CARPETA_DATOS, "numerador_desercion_2022.xlsx")
 ARCHIVO_DENOMINADOR = os.path.join(CARPETA_DATOS, "denominador_desercion_2022.xlsx")
 

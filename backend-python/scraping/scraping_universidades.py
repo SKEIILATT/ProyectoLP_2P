@@ -16,7 +16,7 @@ URL_BASE = "https://www.ces.gob.ec/"
 #URL DE UNIVERSIDADES PÚBLICAS
 URL_PUBLICAS = "https://www.ces.gob.ec/?page_id=328"
 # Carpeta de salida
-CARPETA_DATOS = "datos/estadisticas_ecuador"
+CARPETA_DATOS = "../data/processed/estadisticas_ecuador"
 
 
 def scrapear_universidades_publicas():
