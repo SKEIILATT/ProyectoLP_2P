@@ -36,6 +36,79 @@ def descargar_archivo(url, ruta_destino):
     else:
         print(f"Error al descargar. Error de tipo : {response.status_code}")
         return False
+    
+def procesar_datos():
+    'Esta función me procesa los excel descargados anteriormente en el scraping'
+    #Carga de datos
+    print("Cargador numerador (estudiantes que abandonaron)")
+    numerador = pd.read_excel(ARCHIVO_NUMERADOR)
+    print("Cargador denominador (estudiantes matriculados)")
+    denominador = pd.read_excel(ARCHIVO_DENOMINADOR)
+    print(f"  - Total estudiantes que abandonaron: {len(numerador):,}")
+    print(f"  - Total estudiantes matriculados: {len(denominador):,}")
+    #Calculo de tasa de deserción
+    tasa_desercion = (len(numerador)/len(denominador)*100)
+    print(f"Tasa de deserción generada en 2022: {tasa_desercion}")
+    return numerador, denominador, tasa_desercion 
+
+def generar_estadisticas(numerador, denominador):
+    "Función que genera estadísticas detalladas y las guarda en csv"
+    #Estadística por Sexo
+    desercion_sexo = numerador["sexo"].value_counts()
+    total_sexo = denominador["sexo"].value_counts()
+    stats_sexo = pd.DataFrame({
+        'Estudiantes_Abandonaron':desercion_sexo,
+        'Total matriculados': total_sexo,
+        'Tasa Desercion': (desercion_sexo/total_sexo *100).round(2)
+    })
+    archivo_stats_sexo = os.path.join(CARPETA_DATOS, "desercion_por_sexo.csv")
+    stats_sexo.to_csv(archivo_stats_sexo)
+    print(f"Guardado correctamente {stats_sexo}")
+
+    # 2. Estadísticas por TIPO DE FINANCIAMIENTO
+    desercion_tipo = numerador['tipo_financiamiento'].value_counts()
+    total_tipo = denominador['tipo_financiamiento'].value_counts()
+    
+    stats_tipo = pd.DataFrame({
+        'Estudiantes_Abandonaron': desercion_tipo,
+        'Total_Matriculados': total_tipo,
+        'Tasa_Desercion_%': (desercion_tipo / total_tipo * 100).round(2)
+    })
+    
+    archivo_tipo = os.path.join(CARPETA_DATOS, "desercion_por_tipo_institucion.csv")
+    stats_tipo.to_csv(archivo_tipo)
+    print(f"Guardado: desercion_por_tipo_institucion.csv")
+    return stats_sexo, stats_tipo
+
+def generar_resumen_general(numerador, denominador, tasa_general):
+    """
+    Genera un CSV con el resumen general de deserción
+    """
+    print("Generando resumen general")
+    resumen = pd.DataFrame({
+        'Indicador': [
+            'Total Estudiantes Matriculados 2022',
+            'Total Estudiantes que Abandonaron',
+            'Total Estudiantes que Continuaron',
+            'Tasa de Deserción (%)',
+            'Tasa de Retención (%)'
+        ],
+        'Valor': [
+            len(denominador),
+            len(numerador),
+            len(denominador) - len(numerador),
+            round(tasa_general, 2),
+            round(100 - tasa_general, 2)
+        ]
+    })
+    
+    archivo_resumen = os.path.join(CARPETA_DATOS, "resumen_general_desercion_2022.csv")
+    resumen.to_csv(archivo_resumen, index=False)
+    print(f"Guardado: resumen_general_desercion_2022.csv")
+    
+    return resumen
+
+
 
 def main():
     'Función principal que hace todo el proceso de scraping'
@@ -48,6 +121,18 @@ def main():
     descargar_archivo(URL_DENOMINADOR, ARCHIVO_DENOMINADOR)
     print("Scraping completado exitosamente")
     print(f"Se guardaron los archivos en {CARPETA_DATOS}")
+
+    #Procesar datos
+    numerador, denominador, tasa = procesar_datos()
+    #Genero estadisticas detalladas
+    stats_sexo, stats_tipo = generar_estadisticas(numerador, denominador)
+        
+    # Generar resumen general
+    resumen = generar_resumen_general(numerador, denominador, tasa)
+
+    print()
+    print("Scraping y procesamiento completo")
+    print(f"Archivos guardados en {CARPETA_DATOS}")
 
 if __name__=="__main__":
     main()
