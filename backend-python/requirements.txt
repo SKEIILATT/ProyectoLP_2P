@@ -26,15 +26,6 @@ chromadb==1.3.6
 # PDF Processing
 pypdf==6.4.1
 
-# Utilities
-python-dotenv==1.2.1
-tqdm==4.67.1
-coloredlogs==15.0.1
-python-dateutil==2.9.0.post0
-pytz==2025.2
+# Jupyter Notebook Processing
+nbformat==5.14.0
 
-# ChromaDB Dependencies (required)
-onnxruntime==1.23.2
-pydantic==2.12.5
-pydantic-core==2.41.5
-SQLAlchemy==2.0.45
