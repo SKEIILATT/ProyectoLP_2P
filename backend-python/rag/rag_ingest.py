@@ -17,8 +17,8 @@ CHROMA_PATH = "../documents/processed/chroma_db"
 #Dado que debemos separar la información de los pdf en chunks, entonces se debe de configurar el divisor de estos textos
 
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=500,
-    chunk_overlap=50,
+    chunk_size=2000,
+    chunk_overlap=200,
     length_function=len
 ) 
 
@@ -81,9 +81,21 @@ def cargar_docs_de_directorio(ruta_dir, tipos_archivo=(".pdf", ".txt", ".csv"), 
                 loader = TextLoader(ruta, encoding='utf-8')
                 documentos.extend(loader.load())
             elif ruta.lower().endswith(".csv"):
-                # CSVs suelen ser útiles como tablas; CSVLoader convierte filas en documentos
-                loader = CSVLoader(ruta)
-                documentos.extend(loader.load())
+                # Leer CSV como texto completo para mejor búsqueda semántica
+                try:
+                    with open(ruta, 'r', encoding='utf-8') as f:
+                        contenido_csv = f.read()
+                    # Agregar nombre del archivo al contenido para mejorar búsqueda
+                    nombre_archivo = os.path.basename(ruta)
+                    contenido_con_titulo = f"Archivo: {nombre_archivo}\n\nDatos:\n{contenido_csv}"
+                    documentos.append(Document(
+                        page_content=contenido_con_titulo,
+                        metadata={"source": ruta, "type": "csv", "filename": nombre_archivo}
+                    ))
+                except Exception:
+                    # Fallback a CSVLoader si falla lectura de texto
+                    loader = CSVLoader(ruta)
+                    documentos.extend(loader.load())
         except Exception as e:
             print(f"    Error procesando {ruta}: {e}")
             continue

@@ -6,6 +6,9 @@ import argparse
 from langchain_community.vectorstores import Chroma
 from langchain_ollama import OllamaEmbeddings, ChatOllama
 from langchain_core.documents import Document
+import pandas as pd
+import re
+import os
 
 CHROMA_PATH = "../documents/processed/chroma_db"
 
@@ -22,7 +25,7 @@ def cargar_rag():
     print("Vector y sistema RAG cargado correctamente")
     return vector
 
-def consultar(query, vector, modelo_ollama="llama3"):
+def consultar(query, vector, modelo_ollama="mistral"):
     """
     Realiza la consulta RAG sobre los documentos que se han analizado
     
@@ -37,58 +40,94 @@ def consultar(query, vector, modelo_ollama="llama3"):
     # El parámetro temperature=0.0 es para que la respuesta sea más precisa
     llm = ChatOllama(model=modelo_ollama, temperature=0.0)
 
-    # Configuramos el retriever para obtener los documentos relevantes
-    retriever = vector.as_retriever(search_kwargs={"k": 3})
+    # Configuramos el retriever para obtener un conjunto amplio de documentos
+    retriever = vector.as_retriever(search_kwargs={"k": 30})
 
-    # Obtener documentos relevantes con varios fallbacks según la versión
+    # Obtener documentos relevantes — pedimos más resultados para luego priorizar CSVs
+    docs = []
     try:
-        docs = retriever.get_relevant_documents(query)
-    except Exception:
-        try:
-            docs = retriever.retrieve(query)
-        except Exception:
-            # Algunos retrievers son callables
-            try:
-                docs = retriever(query) if callable(retriever) else []
-            except Exception:
-                docs = []
-
-    # Fallback: intentar similarity_search directamente en el vectorstore
-    if not docs:
-        try:
-            docs = vector.similarity_search(query, k=5)
-        except Exception:
-            docs = docs or []
-
-    # Si aún no hay docs, intentar búsqueda por metadatas (por ejemplo filenames)
-    if not docs:
+        # Pedimos más documentos (k=30) y luego priorizamos CSVs en el ordering
+        docs = vector.similarity_search(query, k=30)
+    except Exception as e:
+        print(f"  similarity_search falló: {e}")
+    
+    # Fallback: búsqueda explícita por metadatas (filenames con palabras clave)
+    if not docs or len(docs) < 5:
+        print(f"  Solo {len(docs) if docs else 0} docs encontrados, buscando por metadatas...")
         try:
             collection = getattr(vector, '_collection', None)
             if collection is not None:
                 data = collection.get(include=['metadatas', 'documents'])
                 metadatas = data.get('metadatas', [])
                 documents = data.get('documents', [])
-                # buscar fuentes que contengan palabras clave de la pregunta
-                keywords = [w.lower().strip() for w in query.replace('ñ','n').split() if len(w) > 3]
-                matched = []
+                
+                # Palabras clave para buscar en filenames
+                keywords = ['desercion', 'estadistica', 'sexo', '2022']
+                matched_indices = []
                 for i, m in enumerate(metadatas):
-                    src = ''
                     if isinstance(m, dict):
-                        src = str(m.get('source', '')).lower()
-                    if any(kw in src for kw in keywords):
-                        matched.append(i)
-                if matched:
-                    docs = []
-                    for i in matched:
+                        source = str(m.get('source', '')).lower().replace('ñ', 'n')
+                        if any(kw in source for kw in keywords):
+                            matched_indices.append(i)
+                
+                # Agregar docs encontrados por metadata
+                if matched_indices:
+                    for i in matched_indices[:20]:  # Limitar a 20
                         docs.append(Document(page_content=documents[i], metadata=metadatas[i]))
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  Metadata search falló: {e}")
 
     if not docs:
         return {"result": "No tengo suficiente información."}
+    # PRIORIZAR CSVs: separar docs CSV y otros, luego ordenar dando preferencia a CSVs
+    csv_docs = []
+    other_docs = []
+    for doc in docs:
+        meta = getattr(doc, 'metadata', None) or {}
+        source = str(meta.get('source', '')).lower() if isinstance(meta, dict) else ''
+        filename = source.split('/')[-1] if source else ''
+        is_csv = False
+        if isinstance(meta, dict) and str(meta.get('type', '')).lower() == 'csv':
+            is_csv = True
+        if filename.endswith('.csv') or source.endswith('.csv'):
+            is_csv = True
+        # También detectar si el contenido empieza con un header tipo 'Archivo: <name>.csv'
+        try:
+            pc = getattr(doc, 'page_content', '')
+            if not is_csv and isinstance(pc, str):
+                head = pc.strip()[:200].lower()
+                if head.startswith('archivo:') and '.csv' in head:
+                    is_csv = True
+        except Exception:
+            pass
+
+        if is_csv:
+            csv_docs.append(doc)
+        else:
+            other_docs.append(doc)
+
+    # Construir lista priorizada: CSVs primero, luego otros (limitar a 10-15 para prompt)
+    docs = (csv_docs + other_docs)[:15]
+
+    # FILTRAR documentos: priorizar los que contienen palabras clave
+    palabras_clave = ['desercion', 'abandono', 'tasa', 'estudiantes', 'matriculados']
+    docs_relevantes = []
+    for doc in docs:
+        content_lower = getattr(doc, 'page_content', '').lower()
+        coincidencias = sum(1 for kw in palabras_clave if kw in content_lower)
+        if coincidencias >= 1:
+            docs_relevantes.append((doc, coincidencias))
+
+    # Si hay docs con coincidencias, ordenar por coincidencias y tomar top 5
+    if docs_relevantes:
+        docs_relevantes.sort(key=lambda x: x[1], reverse=True)
+        docs = [doc for doc, _ in docs_relevantes[:5]]
+    else:
+        # fallback: tomar primeros 5 priorizados
+        docs = docs[:5]
 
     # Combinamos el contexto de los documentos (seguro ante diferentes shapes)
-    context = "\n\n".join([getattr(doc, 'page_content', str(doc)) for doc in docs])[:1800]
+    context = "\n\n".join([getattr(doc, 'page_content', str(doc)) for doc in docs])[:3000]
 
     # Creamos el prompt completo
     prompt_text = (
@@ -117,7 +156,73 @@ def consultar(query, vector, modelo_ollama="llama3"):
         except Exception as e:
             answer = f"Error al invocar el modelo: {e}"
 
+    # Si el LLM indica que no tiene suficiente información, usar el fallback determinista sobre CSVs
+    if isinstance(answer, str) and (
+        "no tengo suficiente información" in answer.lower() or
+        "no tengo suficiente" in answer.lower() or
+        "no tengo" in answer.lower() or
+        answer.strip() == ""
+    ):
+        csv_ans = answer_from_csvs(query)
+        if csv_ans:
+            return {"result": csv_ans}
+
     return {"result": answer}
+
+def answer_from_csvs(query):
+    """Intentar responder consultas frecuentes directamente desde los CSVs procesados.
+    Maneja preguntas como: total abandonaron, por sexo, tasa de deserción, por tipo de institución.
+    """
+    base = "../data/processed/estadisticas_ecuador"
+    try:
+        resumen_path = os.path.join(base, "resumen_general_desercion_2022.csv")
+        sexo_path = os.path.join(base, "desercion_por_sexo.csv")
+        tipo_path = os.path.join(base, "desercion_por_tipo_institucion.csv")
+
+        q = query.lower()
+
+        # Total abandonaron
+        if re.search(r"cuant[oa]|cuánt[oa]|numero|número", q) and re.search(r"abandon|desercion", q):
+            if os.path.exists(resumen_path):
+                df = pd.read_csv(resumen_path)
+                # Buscar la fila 'Total Estudiantes que Abandonaron' o columna equivalente
+                if 'Indicador' in df.columns and 'Valor' in df.columns:
+                    row = df[df['Indicador'].str.contains('Total Estudiantes que Abandonaron', case=False, na=False)]
+                    if not row.empty:
+                        val = int(row['Valor'].iloc[0])
+                        return f"En 2022 abandonaron {val} estudiantes (según resumen_general_desercion_2022.csv)."
+                # fallback: sumar si hay columna
+                return "No pude leer el resumen de abandono correctamente."
+
+        # Desercion por sexo
+        if 'sexo' in q or 'mujer' in q or 'hombre' in q:
+            if os.path.exists(sexo_path):
+                df = pd.read_csv(sexo_path)
+                # Normalizar columnas
+                cols = [c.lower() for c in df.columns]
+                # Buscar filas por sexo
+                lines = []
+                for _, r in df.iterrows():
+                    s = r.iloc[0]
+                    aban = r.iloc[1]
+                    total = r.iloc[2] if len(r) > 2 else None
+                    lines.append(f"{s}: {int(aban)} abandonaron de {int(total)} matriculados (tasa: {r.iloc[3]}%)")
+                return "; ".join(lines)
+
+        # Desercion por tipo de institucion
+        if 'tipo' in q or 'institucion' in q:
+            if os.path.exists(tipo_path):
+                df = pd.read_csv(tipo_path)
+                # convertir a texto simple
+                items = []
+                for _, r in df.iterrows():
+                    items.append(" - ".join([str(x) for x in r.values]))
+                return "\n".join(items[:20])
+
+    except Exception as e:
+        return f"Error leyendo CSVs: {e}"
+
+    return None
 
 def main():
     """Función principal del script"""
@@ -141,8 +246,8 @@ Ejemplos de uso:
     parser.add_argument(
         "--modelo",
         type=str,
-        default="llama3",
-        help="Modelo de Ollama a usar (default: llama3). Ejemplos: llama3, llama3.1, mistral, etc."
+        default="mistral",
+        help="Modelo de Ollama a usar (default: mistral). Ejemplos: llama3, llama3.1, mistral, etc."
     )
     
     args = parser.parse_args()
