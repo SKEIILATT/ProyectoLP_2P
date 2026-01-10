@@ -29,3 +29,7 @@ pypdf==6.4.1
 # Jupyter Notebook Processing
 nbformat==5.14.0
 
+# API REST
+flask==3.1.0
+flask-cors==5.0.0
+
