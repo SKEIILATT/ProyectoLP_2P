@@ -1,0 +1,35 @@
+# Web Scraping
+beautifulsoup4==4.14.3
+requests==2.32.5
+urllib3==2.3.0
+soupsieve==2.8.1
+
+# Data Analysis
+pandas==2.3.3
+numpy==2.3.5
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# RAG - LangChain Core
+langchain==1.1.3
+langchain-community==0.4.1
+langchain-core==1.2.0
+langchain-text-splitters==1.1.0
+
+# RAG - Ollama Integration
+langchain-ollama==1.0.1
+ollama==0.6.1
+
+# RAG - Vector Database
+chromadb==1.3.6
+
+# PDF Processing
+pypdf==6.4.1
+
+# Jupyter Notebook Processing
+nbformat==5.14.0
+
+# API REST
+flask==3.1.0
+flask-cors==5.0.0
+

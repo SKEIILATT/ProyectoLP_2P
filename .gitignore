@@ -1,0 +1,25 @@
+# Claude Code
+.claude/
+
+# Python virtual environment
+backend-python/venv/
+backend-python/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Environment variables
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+backend-python/explorar_excel.py
