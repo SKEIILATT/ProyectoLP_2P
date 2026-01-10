@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import SourceCitation from './SourceCitation';
 
 interface Message {
   id: string;
@@ -7,12 +8,15 @@ interface Message {
   sender: 'user' | 'bot';
   timestamp: Date;
   loading?: boolean;
+  sources?: string[];
+  isInsight?: boolean;
 }
 
 export default function ChatBot() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [generatingInsights, setGeneratingInsights] = useState(false);
   const [ragStatus, setRagStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -80,7 +84,8 @@ export default function ChatBot() {
         id: Date.now().toString(),
         text: response.data.respuesta,
         sender: 'bot',
-        timestamp: new Date()
+        timestamp: new Date(),
+        sources: response.data.sources || []
       };
 
       setMessages(prev => [...prev, botMessage]);
@@ -107,6 +112,69 @@ export default function ChatBot() {
     }
   };
 
+  const generateInsights = async () => {
+    if (generatingInsights || loading) return;
+
+    setGeneratingInsights(true);
+
+    const loadingMessage: Message = {
+      id: Date.now().toString(),
+      text: '',
+      sender: 'bot',
+      timestamp: new Date(),
+      loading: true
+    };
+
+    setMessages(prev => [...prev, loadingMessage]);
+
+    try {
+      const response = await axios.post('http://localhost:8000/api/rag/insights', {
+        modelo: 'mistral'
+      });
+
+      setMessages(prev => prev.filter(m => !m.loading));
+
+      if (response.data.success && response.data.insights) {
+        const insightsText = response.data.insights
+          .map((insight: string, idx: number) => `${idx + 1}. ${insight}`)
+          .join('\n\n');
+
+        const botMessage: Message = {
+          id: Date.now().toString(),
+          text: insightsText,
+          sender: 'bot',
+          timestamp: new Date(),
+          sources: response.data.sources || [],
+          isInsight: true
+        };
+
+        setMessages(prev => [...prev, botMessage]);
+      } else {
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          text: response.data.error || 'No se pudieron generar insights',
+          sender: 'bot',
+          timestamp: new Date()
+        };
+
+        setMessages(prev => [...prev, errorMessage]);
+      }
+    } catch (error: any) {
+      setMessages(prev => prev.filter(m => !m.loading));
+
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        text: 'Error al generar insights. Asegúrate de que el servidor RAG esté corriendo.',
+        sender: 'bot',
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setGeneratingInsights(false);
+    }
+  };
+
   const exampleQuestions = [
     '¿Cuántos estudiantes abandonaron en 2022?',
     '¿Cuál es la tasa de deserción por sexo?',
@@ -124,17 +192,26 @@ export default function ChatBot() {
               <h1 className="text-4xl font-bold text-gray-900 mb-2">Asistente Virtual RAG-EDU</h1>
               <p className="text-gray-600">Consulta información sobre abandono estudiantil usando IA</p>
             </div>
-            <div className="flex items-center space-x-2">
-              <div className={`h-3 w-3 rounded-full ${
-                ragStatus === 'online' ? 'bg-green-500' :
-                ragStatus === 'offline' ? 'bg-red-500' :
-                'bg-yellow-500'
-              }`}></div>
-              <span className="text-sm text-gray-600">
-                {ragStatus === 'online' ? 'RAG Online' :
-                 ragStatus === 'offline' ? 'RAG Offline' :
-                 'Verificando...'}
-              </span>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={generateInsights}
+                disabled={generatingInsights || loading || ragStatus === 'offline'}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all font-medium text-sm shadow-md"
+              >
+                {generatingInsights ? 'Generando...' : 'Generar Hallazgos'}
+              </button>
+              <div className="flex items-center space-x-2">
+                <div className={`h-3 w-3 rounded-full ${
+                  ragStatus === 'online' ? 'bg-green-500' :
+                  ragStatus === 'offline' ? 'bg-red-500' :
+                  'bg-yellow-500'
+                }`}></div>
+                <span className="text-sm text-gray-600">
+                  {ragStatus === 'online' ? 'RAG Online' :
+                   ragStatus === 'offline' ? 'RAG Offline' :
+                   'Verificando...'}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -163,7 +240,15 @@ export default function ChatBot() {
                     </div>
                   ) : (
                     <>
+                      {message.isInsight && (
+                        <div className="mb-2 pb-2 border-b border-gray-300">
+                          <span className="text-xs font-semibold text-purple-700">HALLAZGOS AUTOMÁTICOS</span>
+                        </div>
+                      )}
                       <p className="whitespace-pre-wrap">{message.text}</p>
+                      {message.sender === 'bot' && message.sources && message.sources.length > 0 && (
+                        <SourceCitation sources={message.sources} />
+                      )}
                       <p className={`text-xs mt-1 ${
                         message.sender === 'user' ? 'text-purple-200' : 'text-gray-500'
                       }`}>

@@ -104,10 +104,20 @@ ChromaDB + Ollama (Mistral)
 - Distribución por sexo
 - Tendencia mensual
 
-**Chat IA:**
+**Chat IA Avanzado:**
 - Consultas sobre datos Ecuador 2022
 - Análisis dataset UCI (factores de riesgo)
 - Preguntas de ejemplo integradas
+- Citación automática de fuentes consultadas
+- Generación de hallazgos automáticos con IA
+- Indicador de estado del servicio RAG
+
+**Base de Conocimiento:**
+- Dashboard de documentos indexados
+- Estadísticas de vectorización (documentos, chunks)
+- Distribución por tipo de archivo (CSV, Jupyter, PDF)
+- Visualización de fuentes de datos disponibles
+- Información técnica del sistema RAG
 
 **Fuentes de Datos:**
 - Dataset UCI (analizado en Jupyter)
@@ -225,6 +235,8 @@ ProyectoLP_2P/
 ```bash
 GET  /api/abandono/stats      # Estadísticas dashboard
 POST /api/rag/query           # Consulta al chatbot
+POST /api/rag/insights        # Generar hallazgos automáticos
+GET  /api/rag/stats           # Estadísticas del conocimiento RAG
 GET  /api/rag/health          # Estado del servicio
 GET  /api/rag/models          # Modelos disponibles
 ```
@@ -232,7 +244,9 @@ GET  /api/rag/models          # Modelos disponibles
 ### Python RAG (http://localhost:5000)
 
 ```bash
-POST /api/rag/query           # Consulta directa
+POST /api/rag/query           # Consulta directa (retorna sources + metadata)
+POST /api/rag/insights        # Generar insights automáticos
+GET  /api/rag/stats           # Estadísticas de documentos indexados
 GET  /health                  # Health check
 GET  /api/rag/models          # Lista modelos
 ```
@@ -245,16 +259,24 @@ GET  /api/rag/models          # Lista modelos
 
 1. Navegar a http://localhost:5173
 2. Click en "Dashboard"
-3. Explorar visualizaciones
+3. Explorar visualizaciones interactivas
 
 ### Chat IA
 
 1. Click en "Chat IA"
-2. Escribir pregunta:
+2. Escribir pregunta o usar ejemplos:
    - ¿Cuántos estudiantes abandonaron en 2022?
    - ¿Cómo afectan las becas al abandono?
    - ¿Qué factores predicen el riesgo de abandono?
-3. Recibir respuesta basada en datos reales
+3. Recibir respuesta con citación de fuentes
+4. Click en "Generar Hallazgos" para insights automáticos
+
+### Base de Conocimiento
+
+1. Click en "Base de Conocimiento"
+2. Ver documentos indexados en el RAG
+3. Analizar distribución de fragmentos por tipo
+4. Comprender fuentes de datos disponibles
 
 ---
 
@@ -279,10 +301,13 @@ Proyecto académico - ESPOL 2024/2025
 ## Estado del Proyecto
 
 **Módulo Abandono Estudiantil (Completo)**
-- Dashboard visual
-- Chatbot RAG
-- Datos Ecuador 2022
+- Dashboard visual con 3 KPIs y 3 gráficas
+- Chatbot RAG con citación de fuentes
+- Generación de hallazgos automáticos
+- Dashboard de base de conocimiento
+- Datos Ecuador 2022 integrados
 - Análisis UCI integrado
+- Sistema RAG completamente funcional
 
 **Módulo Rendimiento Académico (Pendiente)**
 - Dataset Open University

@@ -1,6 +1,6 @@
 interface NavigationProps {
-  currentView: 'dashboard' | 'chat';
-  onViewChange: (view: 'dashboard' | 'chat') => void;
+  currentView: 'dashboard' | 'chat' | 'knowledge';
+  onViewChange: (view: 'dashboard' | 'chat' | 'knowledge') => void;
 }
 
 export default function Navigation({ currentView, onViewChange }: NavigationProps) {
@@ -50,6 +50,22 @@ export default function Navigation({ currentView, onViewChange }: NavigationProp
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                 </svg>
                 <span>Chat IA</span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => onViewChange('knowledge')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                currentView === 'knowledge'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+                <span>Base de Conocimiento</span>
               </div>
             </button>
           </div>

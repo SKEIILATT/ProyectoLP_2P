@@ -4,7 +4,7 @@ Expone el sistema de consultas RAG como servicio HTTP
 """
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from rag_query import cargar_rag, consultar
+from rag_query import cargar_rag, consultar, generar_insights, obtener_estadisticas_rag
 import os
 
 app = Flask(__name__)
@@ -82,6 +82,8 @@ def query():
             'success': True,
             'pregunta': pregunta,
             'respuesta': resultado['result'],
+            'sources': resultado.get('sources', []),
+            'metadata': resultado.get('metadata', {}),
             'modelo': modelo
         })
 
@@ -102,6 +104,71 @@ def models():
         ]
     })
 
+@app.route('/api/rag/insights', methods=['POST'])
+def insights():
+    """
+    Genera insights automáticos analizando todos los datos del RAG
+
+    Request body:
+    {
+        "modelo": "mistral" (opcional)
+    }
+
+    Response:
+    {
+        "success": true,
+        "insights": ["hallazgo 1", "hallazgo 2", "hallazgo 3"],
+        "sources": ["archivo1.csv", "archivo2.ipynb"]
+    }
+    """
+    try:
+        if vectorstore is None:
+            return jsonify({
+                'success': False,
+                'error': 'Sistema RAG no inicializado'
+            }), 503
+
+        data = request.get_json() or {}
+        modelo = data.get('modelo', 'mistral')
+
+        resultado = generar_insights(vectorstore, modelo)
+
+        return jsonify(resultado)
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/rag/stats', methods=['GET'])
+def stats():
+    """
+    Obtiene estadísticas sobre el conocimiento almacenado en el RAG
+
+    Response:
+    {
+        "total_documentos": 10,
+        "total_chunks": 245,
+        "fuentes": [{nombre, chunks, tipo}],
+        "tipos": {csv: 5, jupyter: 2, pdf: 3}
+    }
+    """
+    try:
+        if vectorstore is None:
+            return jsonify({
+                'error': 'Sistema RAG no inicializado'
+            }), 503
+
+        estadisticas = obtener_estadisticas_rag(vectorstore)
+
+        return jsonify(estadisticas)
+
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
+
 if __name__ == '__main__':
     print("="*80)
     print("RAG-EDU API Server")
@@ -109,6 +176,8 @@ if __name__ == '__main__':
     print("Endpoints disponibles:")
     print("  GET  /health              - Estado del servicio")
     print("  POST /api/rag/query       - Consultar al RAG")
+    print("  POST /api/rag/insights    - Generar insights automáticos")
+    print("  GET  /api/rag/stats       - Estadísticas del conocimiento")
     print("  GET  /api/rag/models      - Modelos disponibles")
     print("="*80)
     print("\nIniciando servidor en http://localhost:5000")

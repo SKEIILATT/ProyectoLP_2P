@@ -25,14 +25,70 @@ def cargar_rag():
     print("Vector y sistema RAG cargado correctamente")
     return vector
 
+def obtener_estadisticas_rag(vector):
+    """
+    Obtiene estadísticas sobre el conocimiento almacenado en el RAG
+
+    Args:
+        vector: El vector de ChromaDB
+
+    Returns:
+        dict con estadísticas del RAG
+    """
+    try:
+        collection = getattr(vector, '_collection', None)
+        if collection is None:
+            return {"error": "No se pudo acceder a la colección"}
+
+        data = collection.get(include=['metadatas', 'documents'])
+        metadatas = data.get('metadatas', [])
+        documents = data.get('documents', [])
+
+        # Contar documentos por tipo
+        fuentes = {}
+        total_chunks = len(documents)
+
+        for meta in metadatas:
+            if isinstance(meta, dict):
+                source = meta.get('source', 'Desconocido')
+                filename = source.split('/')[-1].split('\\')[-1]
+
+                if filename not in fuentes:
+                    fuentes[filename] = {
+                        'nombre': filename,
+                        'chunks': 0,
+                        'tipo': 'CSV' if filename.endswith('.csv') else 'Jupyter' if filename.endswith('.ipynb') else 'PDF' if filename.endswith('.pdf') else 'Otro'
+                    }
+                fuentes[filename]['chunks'] += 1
+
+        # Ordenar por número de chunks
+        fuentes_list = sorted(fuentes.values(), key=lambda x: x['chunks'], reverse=True)
+
+        return {
+            "total_documentos": len(fuentes),
+            "total_chunks": total_chunks,
+            "fuentes": fuentes_list,
+            "tipos": {
+                "csv": len([f for f in fuentes_list if f['tipo'] == 'CSV']),
+                "jupyter": len([f for f in fuentes_list if f['tipo'] == 'Jupyter']),
+                "pdf": len([f for f in fuentes_list if f['tipo'] == 'PDF']),
+                "otros": len([f for f in fuentes_list if f['tipo'] == 'Otro'])
+            }
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
 def consultar(query, vector, modelo_ollama="mistral"):
     """
     Realiza la consulta RAG sobre los documentos que se han analizado
-    
+
     Args:
         query: La consulta que se desea hacer sobre los documentos
         vector: El vector de ChromaDB que se ha creado para los documentos
         modelo_ollama: El modelo ollama que se ha utilizado para la consulta
+
+    Returns:
+        dict con keys: result, sources, metadata
     """
     print(f"Generando respuesta con modelo {modelo_ollama}")
 
@@ -50,7 +106,7 @@ def consultar(query, vector, modelo_ollama="mistral"):
         docs = vector.similarity_search(query, k=30)
     except Exception as e:
         print(f"  similarity_search falló: {e}")
-    
+
     # Fallback: búsqueda explícita por metadatas (filenames con palabras clave)
     if not docs or len(docs) < 5:
         print(f"  Solo {len(docs) if docs else 0} docs encontrados, buscando por metadatas...")
@@ -60,7 +116,7 @@ def consultar(query, vector, modelo_ollama="mistral"):
                 data = collection.get(include=['metadatas', 'documents'])
                 metadatas = data.get('metadatas', [])
                 documents = data.get('documents', [])
-                
+
                 # Palabras clave para buscar en filenames
                 keywords = ['desercion', 'estadistica', 'sexo', '2022']
                 matched_indices = []
@@ -69,7 +125,7 @@ def consultar(query, vector, modelo_ollama="mistral"):
                         source = str(m.get('source', '')).lower().replace('ñ', 'n')
                         if any(kw in source for kw in keywords):
                             matched_indices.append(i)
-                
+
                 # Agregar docs encontrados por metadata
                 if matched_indices:
                     for i in matched_indices[:20]:  # Limitar a 20
@@ -78,7 +134,12 @@ def consultar(query, vector, modelo_ollama="mistral"):
             print(f"  Metadata search falló: {e}")
 
     if not docs:
-        return {"result": "No tengo suficiente información."}
+        return {
+            "result": "No tengo suficiente información.",
+            "sources": [],
+            "metadata": {"docs_found": 0}
+        }
+
     # PRIORIZAR CSVs: separar docs CSV y otros, luego ordenar dando preferencia a CSVs
     csv_docs = []
     other_docs = []
@@ -121,13 +182,25 @@ def consultar(query, vector, modelo_ollama="mistral"):
     # Si hay docs con coincidencias, ordenar por coincidencias y tomar top 5
     if docs_relevantes:
         docs_relevantes.sort(key=lambda x: x[1], reverse=True)
-        docs = [doc for doc, _ in docs_relevantes[:5]]
+        docs_final = [doc for doc, _ in docs_relevantes[:5]]
     else:
         # fallback: tomar primeros 5 priorizados
-        docs = docs[:5]
+        docs_final = docs[:5]
+
+    # Extraer fuentes únicas de los documentos utilizados
+    sources = []
+    for doc in docs_final:
+        meta = getattr(doc, 'metadata', {}) or {}
+        if isinstance(meta, dict):
+            source = meta.get('source', '')
+            if source:
+                # Extraer solo el nombre del archivo
+                filename = source.split('/')[-1].split('\\')[-1]
+                if filename not in sources:
+                    sources.append(filename)
 
     # Combinamos el contexto de los documentos (seguro ante diferentes shapes)
-    context = "\n\n".join([getattr(doc, 'page_content', str(doc)) for doc in docs])[:3000]
+    context = "\n\n".join([getattr(doc, 'page_content', str(doc)) for doc in docs_final])[:3000]
 
     # Creamos el prompt completo
     prompt_text = (
@@ -165,9 +238,92 @@ def consultar(query, vector, modelo_ollama="mistral"):
     ):
         csv_ans = answer_from_csvs(query)
         if csv_ans:
-            return {"result": csv_ans}
+            return {
+                "result": csv_ans,
+                "sources": ["resumen_general_desercion_2022.csv", "desercion_por_sexo.csv", "desercion_por_tipo_institucion.csv"],
+                "metadata": {"fallback": True, "docs_found": len(docs_final)}
+            }
 
-    return {"result": answer}
+    return {
+        "result": answer,
+        "sources": sources,
+        "metadata": {
+            "docs_found": len(docs_final),
+            "csv_docs": len([d for d in docs_final if any(x in str(getattr(d, 'metadata', {}).get('source', '')).lower() for x in ['.csv'])]),
+            "other_docs": len([d for d in docs_final if not any(x in str(getattr(d, 'metadata', {}).get('source', '')).lower() for x in ['.csv'])])
+        }
+    }
+
+def generar_insights(vector, modelo_ollama="mistral"):
+    """
+    Genera insights automáticos analizando todos los datos disponibles en el RAG
+
+    Args:
+        vector: El vector de ChromaDB con los documentos
+        modelo_ollama: El modelo ollama a utilizar
+
+    Returns:
+        dict con insights encontrados
+    """
+    print("Generando insights automáticos...")
+
+    llm = ChatOllama(model=modelo_ollama, temperature=0.2)
+
+    # Obtener documentos clave
+    try:
+        docs = vector.similarity_search("estadísticas abandono deserción factores riesgo becas rendimiento", k=10)
+    except Exception:
+        docs = []
+
+    if not docs:
+        return {
+            "success": False,
+            "insights": [],
+            "error": "No hay suficientes datos para generar insights"
+        }
+
+    # Combinar contexto
+    context = "\n\n".join([getattr(doc, 'page_content', str(doc)) for doc in docs])[:4000]
+
+    prompt = f"""Analiza los siguientes datos sobre abandono estudiantil y encuentra los 3 hallazgos más importantes y sorprendentes.
+
+Contexto:
+{context}
+
+Instrucciones:
+- Identifica patrones, correlaciones o hallazgos clave
+- Presenta cada hallazgo en una oración clara y concisa
+- Enfócate en información cuantitativa y específica
+- Evita generalidades, proporciona números exactos cuando sea posible
+
+Responde con exactamente 3 hallazgos, uno por línea, numerados 1., 2., 3.
+
+Hallazgos:"""
+
+    try:
+        resp = llm.invoke(prompt)
+        answer = getattr(resp, 'content', str(resp))
+
+        # Parsear insights
+        lines = [l.strip() for l in answer.split('\n') if l.strip()]
+        insights = []
+        for line in lines:
+            # Remover numeración si existe
+            clean = re.sub(r'^\d+[\.\)]\s*', '', line)
+            if clean and len(clean) > 20:
+                insights.append(clean)
+
+        return {
+            "success": True,
+            "insights": insights[:3],
+            "sources": list(set([getattr(doc, 'metadata', {}).get('source', '').split('/')[-1] for doc in docs if getattr(doc, 'metadata', {}).get('source')]))
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "insights": [],
+            "error": str(e)
+        }
 
 def answer_from_csvs(query):
     """Intentar responder consultas frecuentes directamente desde los CSVs procesados.

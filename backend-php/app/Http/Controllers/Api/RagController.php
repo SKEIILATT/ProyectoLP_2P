@@ -98,4 +98,62 @@ class RagController extends Controller
             ], 503);
         }
     }
+
+    /**
+     * POST /api/rag/insights
+     * Genera insights automáticos del RAG
+     */
+    public function insights(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'modelo' => 'nullable|string|in:mistral,llama3,llama3.1'
+        ]);
+
+        try {
+            $response = Http::timeout(90)->post("{$this->ragApiUrl}/api/rag/insights", [
+                'modelo' => $validated['modelo'] ?? 'mistral'
+            ]);
+
+            if ($response->failed()) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Error al generar insights'
+                ], 503);
+            }
+
+            return response()->json($response->json());
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'El servicio RAG no está disponible',
+                'details' => $e->getMessage()
+            ], 503);
+        }
+    }
+
+    /**
+     * GET /api/rag/stats
+     * Obtiene estadísticas del conocimiento almacenado en el RAG
+     */
+    public function stats(): JsonResponse
+    {
+        try {
+            $response = Http::timeout(10)->get("{$this->ragApiUrl}/api/rag/stats");
+
+            if ($response->successful()) {
+                return response()->json($response->json());
+            }
+
+            return response()->json([
+                'error' => 'Error al obtener estadísticas'
+            ], 503);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'El servicio RAG no está disponible',
+                'details' => $e->getMessage()
+            ], 503);
+        }
+    }
 }
