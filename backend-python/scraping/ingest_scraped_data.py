@@ -35,8 +35,10 @@ class ScrapedDataIngestor:
             chroma_dir: Directorio de ChromaDB
             collection_name: Nombre de la colección
         """
-        self.papers_dir = Path(papers_dir)
-        self.chroma_dir = Path(chroma_dir)
+        # Usar rutas relativas al archivo actual
+        script_dir = Path(__file__).parent
+        self.papers_dir = script_dir / papers_dir
+        self.chroma_dir = script_dir / chroma_dir
         self.collection_name = collection_name
         
         # Crear directorio de ChromaDB
@@ -104,7 +106,7 @@ URL: {paper.get('url', 'N/A')}
                 doc = Document(
                     page_content=content,
                     metadata={
-                        'source': 'google_scholar',
+                        'source': 'academic_papers',
                         'type': 'academic_paper',
                         'title': paper.get('title', 'N/A'),
                         'year': str(paper.get('year', 'N/A')),
@@ -119,7 +121,7 @@ URL: {paper.get('url', 'N/A')}
             chunks = self.text_splitter.split_documents(documents)
             
             # Agregar a ChromaDB
-            self._add_chunks_to_collection(chunks, source='google_scholar')
+            self._add_chunks_to_collection(chunks, source='academic_papers')
             
             logger.info(f"✅ {len(papers)} papers → {len(chunks)} chunks ingestados")
             return len(chunks)
@@ -192,10 +194,13 @@ URL: {paper.get('url', 'N/A')}
         
         logger.info(f"   └─ Agregados {len(chunks)} chunks a ChromaDB")
     
-    def ingest_all(self) -> Dict[str, int]:
+    def ingest_all(self, clear_collection: bool = True) -> Dict[str, int]:
         """
         Ingesta todos los archivos scraped
         
+        Args:
+            clear_collection: Si limpiar la colección antes de ingestar
+            
         Returns:
             Diccionario con conteo de chunks por fuente
         """
@@ -203,15 +208,29 @@ URL: {paper.get('url', 'N/A')}
         logger.info("🚀 INICIANDO INGESTA DE DATOS SCRAPED A CHROMADB")
         logger.info("="*80)
         
+        # Limpiar colección si se solicita
+        if clear_collection:
+            logger.info("🧹 Limpiando colección existente...")
+            try:
+                # Obtener todos los IDs y eliminarlos
+                all_docs = self.collection.get()
+                if all_docs['ids']:
+                    self.collection.delete(ids=all_docs['ids'])
+                    logger.info(f"✅ Eliminados {len(all_docs['ids'])} documentos existentes")
+                else:
+                    logger.info("✅ Colección ya estaba vacía")
+            except Exception as e:
+                logger.warning(f"⚠️  No se pudo limpiar colección: {e}")
+        
         results = {}
         
         # 1. Papers académicos (JSON)
         papers_file = self.papers_dir / 'papers_desercion.json'
         if papers_file.exists():
-            results['google_scholar'] = self.ingest_papers_json(str(papers_file))
+            results['academic_papers'] = self.ingest_papers_json(str(papers_file))
         else:
             logger.warning(f"⚠️  No encontrado: {papers_file}")
-            results['google_scholar'] = 0
+            results['academic_papers'] = 0
         
         # 2. Repositorios ecuatorianos (TXT)
         repos_file = self.papers_dir / 'repositorios_ecuador.txt'
@@ -304,6 +323,58 @@ URL: {paper.get('url', 'N/A')}
             logger.error(f"❌ Error en query: {e}")
             return None
     
+    def test_rag_query_filtered(self, query: str, preferred_sources: List[str], n_results: int = 3):
+        """
+        Prueba el RAG con consulta filtrada por fuentes preferidas
+        
+        Args:
+            query: Consulta a realizar
+            preferred_sources: Lista de fuentes preferidas (ej: ['academic_papers', 'recursos_educativos'])
+            n_results: Número de resultados a retornar
+        """
+        logger.info(f"\n🔍 Probando RAG filtrado con query: '{query}'")
+        logger.info(f"   └─ Fuentes preferidas: {preferred_sources}")
+        logger.info("-" * 80)
+        
+        try:
+            # Primero buscar en fuentes preferidas
+            results = self.collection.query(
+                query_texts=[query],
+                n_results=n_results * 2,  # Más resultados para tener opciones
+                where={"source": {"$in": preferred_sources}}
+            )
+            
+            found_preferred = len(results['documents'][0]) > 0
+            
+            if found_preferred:
+                # Usar resultados de fuentes preferidas
+                docs_to_show = results['documents'][0][:n_results]
+                metas_to_show = results['metadatas'][0][:n_results]
+                logger.info(f"\n📚 Encontrados {len(docs_to_show)} documentos en fuentes preferidas:\n")
+            else:
+                # Si no hay resultados en fuentes preferidas, buscar en todas las fuentes
+                logger.info(f"\n⚠️  No se encontraron resultados en fuentes preferidas, buscando en todas las fuentes...")
+                results = self.collection.query(
+                    query_texts=[query],
+                    n_results=n_results
+                )
+                docs_to_show = results['documents'][0]
+                metas_to_show = results['metadatas'][0]
+                logger.info(f"\n📚 Encontrados {len(docs_to_show)} documentos relevantes:\n")
+            
+            for i, (doc, metadata) in enumerate(zip(docs_to_show, metas_to_show), 1):
+                logger.info(f"--- Resultado {i} ---")
+                logger.info(f"Fuente: {metadata.get('source', 'N/A')}")
+                logger.info(f"Tipo: {metadata.get('type', 'N/A')}")
+                logger.info(f"Contenido: {doc[:200]}...")
+                logger.info("")
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"❌ Error en query filtrada: {e}")
+            return None
+    
     def get_collection_stats(self):
         """Obtiene estadísticas de la colección"""
         count = self.collection.count()
@@ -328,19 +399,19 @@ def main():
         # Mostrar estadísticas
         ingestor.get_collection_stats()
         
-        # Probar el RAG
+        # Probar el RAG con consultas filtradas por fuente
         test_queries = [
-            "¿Qué dice la literatura sobre factores de abandono estudiantil?",
-            "¿Qué políticas de becas existen en Ecuador?",
-            "¿Cuáles son las técnicas de estudio más efectivas?"
+            ("¿Qué dice la literatura sobre factores de abandono estudiantil?", ["academic_papers"]),
+            ("¿Qué políticas de becas existen en Ecuador?", ["politicas_becas"]),
+            ("¿Cuáles son las técnicas de estudio más efectivas?", ["recursos_educativos"])
         ]
         
         logger.info("\n" + "="*80)
-        logger.info("🧪 PROBANDO RAG CON CONSULTAS DE EJEMPLO")
+        logger.info("🧪 PROBANDO RAG CON CONSULTAS FILTRADAS POR FUENTE")
         logger.info("="*80)
         
-        for query in test_queries:
-            ingestor.test_rag_query(query, n_results=2)
+        for query, preferred_sources in test_queries:
+            ingestor.test_rag_query_filtered(query, preferred_sources, n_results=2)
         
         logger.info("\n✅ Ingesta y pruebas completadas exitosamente")
         logger.info("\n🎉 El sistema RAG está listo para responder consultas!")

@@ -1,22 +1,23 @@
 {
-  "timestamp": "2025-12-28T19:19:40.486754",
+  "timestamp": "2026-01-10T21:29:43.239179",
   "scrapers": {
-    "google_scholar": {
-      "status": "error",
-      "error": "No se encontró el archivo datos\\papers_academicos\\papers_desercion.json"
+    "academic_papers": {
+      "status": "success",
+      "papers_count": 22,
+      "output_file": "c:\\Users\\USER\\Desktop\\Proyecto-LP-2do-Parcial\\ProyectoLP_2P\\backend-python\\scraping\\datos\\papers_academicos\\papers_desercion.json"
     },
     "repositorios": {
       "status": "success",
       "documents_count": 7,
-      "output_file": "datos\\papers_academicos\\repositorios_ecuador.txt"
+      "output_file": "c:\\Users\\USER\\Desktop\\Proyecto-LP-2do-Parcial\\ProyectoLP_2P\\backend-python\\scraping\\datos\\papers_academicos\\repositorios_ecuador.txt"
     },
     "becas": {
       "status": "success",
-      "output_file": "datos\\papers_academicos\\politicas_becas.txt"
+      "output_file": "c:\\Users\\USER\\Desktop\\Proyecto-LP-2do-Parcial\\ProyectoLP_2P\\backend-python\\scraping\\datos\\papers_academicos\\politicas_becas.txt"
     },
     "recursos": {
       "status": "success",
-      "output_file": "datos\\papers_academicos\\recursos_orientacion.txt"
+      "output_file": "c:\\Users\\USER\\Desktop\\Proyecto-LP-2do-Parcial\\ProyectoLP_2P\\backend-python\\scraping\\datos\\papers_academicos\\recursos_orientacion.txt"
     }
   }
 }

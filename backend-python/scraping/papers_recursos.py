@@ -23,13 +23,16 @@ logger = logging.getLogger(__name__)
 from scrapers.repository_scraper import RepositoryScraper
 from scrapers.becas_scraper import BecasScraper
 from scrapers.recursos_scraper import RecursosEducativosScraper
+from scrapers.scholar_scraper import ScholarScraper
 
 
 class PapersRecursosManager:
     """Gestiona todo el proceso de scraping"""
     
     def __init__(self, base_path='datos'):
-        self.base_path = Path(base_path)
+        # Usar ruta relativa al archivo actual
+        script_dir = Path(__file__).parent
+        self.base_path = script_dir / base_path
         self.papers_dir = self.base_path / 'papers_academicos'
         self.rag_dir = self.base_path / 'rag_knowledge'
         
@@ -50,45 +53,46 @@ class PapersRecursosManager:
             'scrapers': {}
         }
         
-        # 1. Google Scholar - Papers académicos
+        # 1. Google Scholar / arXiv Papers - Papers académicos
         try:
-            logger.info("\n📚 FASE 1: Extrayendo papers de Google Scholar")
+            logger.info("\n📚 FASE 1: Extrayendo papers académicos de fuentes públicas")
             logger.info("-" * 80)
             
-            # Ejecutar fix_papers_data.py directamente
-            import subprocess
-            import sys
+            scholar_scraper = ScholarScraper()
             
-            script_path = Path(__file__).parent / 'scrapers' / 'fix_papers_data.py'
-            # Ejecutar desde el directorio backend-python
-            result = subprocess.run([sys.executable, str(script_path)], 
-                                  capture_output=True, text=True, cwd=Path(__file__).parent)
+            # Consultas más específicas sobre deserción estudiantil
+            queries = [
+                "student dropout factors higher education",
+                "academic retention prediction models",
+                "student attrition causes university",
+                "dropout prevention strategies education",
+                "early intervention student success",
+                "student persistence higher education",
+                "academic dropout risk factors",
+                "student retention strategies university",
+                "dropout prediction models education",
+                "academic early warning systems"
+            ]
             
-            if result.returncode == 0:
-                logger.info("✅ Script fix_papers_data.py ejecutado exitosamente")
-                
-                # Verificar que se creó el archivo
+            papers = scholar_scraper.scrape_multiple_queries(queries, papers_per_query=5)
+            
+            if papers:
                 output_file = self.papers_dir / 'papers_desercion.json'
-                if output_file.exists():
-                    # Leer el archivo generado para contar papers
-                    with open(output_file, 'r', encoding='utf-8') as f:
-                        papers = json.load(f)
-                    
-                    results['scrapers']['google_scholar'] = {
-                        'status': 'success',
-                        'papers_count': len(papers),
-                        'output_file': str(output_file)
-                    }
-                    
-                    logger.info(f"✅ Scholar completado: {len(papers)} papers extraídos\n")
-                else:
-                    raise FileNotFoundError(f"No se encontró el archivo {output_file}")
+                scholar_scraper.save_to_json(papers, str(output_file))
+                
+                results['scrapers']['academic_papers'] = {
+                    'status': 'success',
+                    'papers_count': len(papers),
+                    'output_file': str(output_file)
+                }
+                
+                logger.info(f"✅ Papers académicos completado: {len(papers)} papers extraídos\n")
             else:
-                raise Exception(f"Error ejecutando script: {result.stderr}")
+                raise Exception("No se pudieron extraer papers de las fuentes públicas")
             
         except Exception as e:
-            logger.error(f"❌ Error en Google Scholar: {e}")
-            results['scrapers']['google_scholar'] = {
+            logger.error(f"❌ Error al extraer papers académicos: {e}")
+            results['scrapers']['academic_papers'] = {
                 'status': 'error',
                 'error': str(e)
             }
