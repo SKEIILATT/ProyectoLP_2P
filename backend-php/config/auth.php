@@ -40,6 +40,14 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+<<<<<<< HEAD
+=======
+
+        'sanctum' => [
+            'driver' => 'sanctum',
+            'provider' => null,
+        ],
+>>>>>>> dev-Jair
     ],
 
     /*
