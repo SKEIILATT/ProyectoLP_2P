@@ -1,6 +1,6 @@
 interface NavigationProps {
-  currentView: 'dashboard' | 'chat';
-  onViewChange: (view: 'dashboard' | 'chat') => void;
+  currentView: 'abandono' | 'rendimiento' | 'chat';
+  onViewChange: (view: 'abandono' | 'rendimiento' | 'chat') => void;
 }
 
 export default function Navigation({ currentView, onViewChange }: NavigationProps) {
@@ -21,22 +21,35 @@ export default function Navigation({ currentView, onViewChange }: NavigationProp
           </div>
 
           <div className="flex space-x-2">
+            {/* Botón Abandono */}
             <button
-              onClick={() => onViewChange('dashboard')}
+              onClick={() => onViewChange('abandono')}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                currentView === 'dashboard'
+                currentView === 'abandono'
                   ? 'bg-purple-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
               <div className="flex items-center space-x-2">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <span>Dashboard</span>
+                <span>Abandono</span>
               </div>
             </button>
 
+            {/* Botón Rendimiento */}
+            <button
+              onClick={() => onViewChange('rendimiento')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                currentView === 'rendimiento'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <span>Rendimiento</span>
+              </div>
+            </button>
+
+            {/* Botón Chat IA */}
             <button
               onClick={() => onViewChange('chat')}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
