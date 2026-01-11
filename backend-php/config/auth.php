@@ -36,19 +36,17 @@ return [
     */
 
     'guards' => [
-        'web' => [
-            'driver' => 'session',
-            'provider' => 'users',
-        ],
-<<<<<<< HEAD
-=======
-
-        'sanctum' => [
-            'driver' => 'sanctum',
-            'provider' => null,
-        ],
->>>>>>> dev-Jair
+    'web' => [
+        'driver' => 'session',
+        'provider' => 'users',
     ],
+
+    'sanctum' => [
+        'driver' => 'sanctum',
+        'provider' => null,
+    ],
+    ],
+
 
     /*
     |--------------------------------------------------------------------------

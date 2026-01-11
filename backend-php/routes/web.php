@@ -5,9 +5,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', function () {
     return view('welcome');
 });
-<<<<<<< HEAD
-=======
+
 Route::get('/login', function () {
     return response()->json(['message' => 'Please use API endpoints for authentication']);
 })->name('login');
->>>>>>> dev-Jair

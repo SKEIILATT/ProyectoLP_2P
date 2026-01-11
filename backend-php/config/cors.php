@@ -19,11 +19,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-<<<<<<< HEAD
     'allowed_origins' => ['http://localhost:5173', 'http://localhost:3000'],
-=======
-    'allowed_origins' => ['http://localhost:5173'],
->>>>>>> dev-Jair
 
     'allowed_origins_patterns' => [],
 
@@ -33,10 +29,6 @@ return [
 
     'max_age' => 0,
 
-<<<<<<< HEAD
-    'supports_credentials' => false,
-=======
     'supports_credentials' => true,
->>>>>>> dev-Jair
 
 ];
