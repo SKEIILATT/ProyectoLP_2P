@@ -1,1 +1,2 @@
-backend-python/data/*.csv
+data/*.csv
+output/

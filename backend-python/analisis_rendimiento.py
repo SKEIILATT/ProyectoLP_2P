@@ -1,42 +1,57 @@
+import os
+import sys
+
+# Forzar matplotlib a modo servidor (sin GUI)
+os.environ["MPLBACKEND"] = "Agg"
+
+# Bloquear mensajes binarios de matplotlib
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+
 import pandas as pd
 import matplotlib.pyplot as plt
-import os
+
+
+print("SCRIPT EJECUTADO:", __file__)
 
 # ===============================
 # CONFIGURACIÓN DE RUTAS
 # ===============================
 
-DATA_PATH = "data/"
-OUTPUT_PATH = "output/"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(SCRIPT_DIR, "data")
+OUTPUT_PATH = os.path.join(SCRIPT_DIR, "output")
+
 print("Buscando datos en:", DATA_PATH)
+
+if not os.path.exists(DATA_PATH):
+    raise FileNotFoundError(f"No existe la carpeta data: {DATA_PATH}")
+
 print("Archivos encontrados:", os.listdir(DATA_PATH))
 
 os.makedirs(OUTPUT_PATH, exist_ok=True)
 
 # ===============================
-# CARGA DE DATASETS
+# CARGA DE DATASETS (FORZANDO ENCODING)
 # ===============================
 
-student_info = pd.read_csv(DATA_PATH + "studentInfo.csv")
-student_assessment = pd.read_csv(DATA_PATH + "studentAssessment.csv")
-assessments = pd.read_csv(DATA_PATH + "assessments.csv")
-student_vle = pd.read_csv(DATA_PATH + "studentVle.csv")
+student_info = pd.read_csv(os.path.join(DATA_PATH, "studentInfo.csv"), encoding="latin1")
+student_assessment = pd.read_csv(os.path.join(DATA_PATH, "studentAssessment.csv"), encoding="latin1")
+assessments = pd.read_csv(os.path.join(DATA_PATH, "assessments.csv"), encoding="latin1")
+student_vle = pd.read_csv(os.path.join(DATA_PATH, "studentVle.csv"), encoding="latin1")
 
 # ===============================
 # LIMPIEZA DE DATOS
 # ===============================
 
-# Eliminar registros sin resultado final
 student_info = student_info.dropna(subset=["final_result"])
 
-# Limpieza y conversión de scores
 student_assessment["score"] = pd.to_numeric(
     student_assessment["score"],
     errors="coerce"
 )
 
 student_assessment = student_assessment.dropna(subset=["score"])
-
 student_assessment = student_assessment[
     (student_assessment["score"] >= 0) &
     (student_assessment["score"] <= 100)
@@ -44,7 +59,6 @@ student_assessment = student_assessment[
 
 student_vle = student_vle.dropna(subset=["sum_click"])
 
-# Mapear resultados finales a valores numéricos
 final_result_map = {
     "Fail": 40,
     "Withdrawn": 30,
@@ -73,9 +87,10 @@ avg_scores = (
 )
 
 avg_scores.to_json(
-    OUTPUT_PATH + "rendimiento_por_materia.json",
+    os.path.join(OUTPUT_PATH, "rendimiento_por_materia.json"),
     orient="records",
-    indent=2
+    indent=2,
+    force_ascii=False
 )
 
 plt.figure()
@@ -84,7 +99,7 @@ plt.xlabel("Materia")
 plt.ylabel("Promedio de notas")
 plt.title("Promedio de notas por materia")
 plt.tight_layout()
-plt.savefig(OUTPUT_PATH + "promedio_notas_por_materia.png")
+plt.savefig(os.path.join(OUTPUT_PATH, "promedio_notas_por_materia.png"))
 plt.close()
 
 # ===============================
@@ -109,9 +124,10 @@ performance_clicks[[
     "sum_click",
     "final_score"
 ]].to_json(
-    OUTPUT_PATH + "clicks_vs_nota.json",
+    os.path.join(OUTPUT_PATH, "clicks_vs_nota.json"),
     orient="records",
-    indent=2
+    indent=2,
+    force_ascii=False
 )
 
 plt.figure()
@@ -124,14 +140,13 @@ plt.xlabel("Total de clicks en la plataforma")
 plt.ylabel("Nota final")
 plt.title("Relación entre interacción en plataforma y nota final")
 plt.tight_layout()
-plt.savefig(OUTPUT_PATH + "clicks_vs_nota.png")
+plt.savefig(os.path.join(OUTPUT_PATH, "clicks_vs_nota.png"))
 plt.close()
 
 # ===============================
 # GRÁFICA 3: EVALUACIONES RENDIDAS VS NOTA FINAL
 # ===============================
 
-# Contar número de evaluaciones rendidas por estudiante
 assessments_per_student = (
     student_assessment
     .groupby("id_student")["id_assessment"]
@@ -140,25 +155,23 @@ assessments_per_student = (
     .rename(columns={"id_assessment": "num_assessments"})
 )
 
-# Unir con información final del estudiante
 performance_assessments = student_info.merge(
     assessments_per_student,
     on="id_student",
     how="inner"
 )
 
-# Guardar JSON
 performance_assessments[[
     "id_student",
     "num_assessments",
     "final_score"
 ]].to_json(
-    OUTPUT_PATH + "evaluaciones_vs_nota.json",
+    os.path.join(OUTPUT_PATH, "evaluaciones_vs_nota.json"),
     orient="records",
-    indent=2
+    indent=2,
+    force_ascii=False
 )
 
-# Graficar
 plt.figure()
 plt.scatter(
     performance_assessments["num_assessments"],
@@ -169,12 +182,12 @@ plt.xlabel("Número de evaluaciones rendidas")
 plt.ylabel("Nota final")
 plt.title("Relación entre evaluaciones rendidas y nota final")
 plt.tight_layout()
-plt.savefig(OUTPUT_PATH + "evaluaciones_vs_nota.png")
+plt.savefig(os.path.join(OUTPUT_PATH, "evaluaciones_vs_nota.png"))
 plt.close()
 
-
+# ===============================
 # MENSAJE FINAL
-
+# ===============================
 
 print("Análisis de rendimiento académico completado.")
 print("Resultados generados:")

@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Services\PythonRunnerService;
+use App\Http\Controllers\RendimientoController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -34,3 +35,7 @@ Route::post('/run-python-script', function (Request $request) {
 
     return response()->json($result);
 });
+
+// Rutas de rendimiento
+Route::get('/rendimiento/general', [RendimientoController::class, 'general']);
+Route::post('/chat/ask', [RendimientoController::class, 'ask']);

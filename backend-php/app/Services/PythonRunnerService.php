@@ -32,9 +32,26 @@ class PythonRunnerService
             // Crear el proceso
             $process = new Process($command);
 
+            // Establecer el directorio de trabajo al directorio del script
+            $scriptDir = dirname($scriptPath);
+            $process->setWorkingDirectory($scriptDir);
+
             // Configurar timeouts
             $process->setTimeout(60); // 60 segundos máximo
             $process->setIdleTimeout(30); // 30 segundos de inactividad
+
+            // Configurar variables de entorno para matplotlib
+            $env = $_SERVER;
+            $env['HOME'] = getenv('USERPROFILE') ?: getenv('HOME') ?: 'C:\Users\Default';
+            $env['USERPROFILE'] = getenv('USERPROFILE') ?: 'C:\Users\Default';
+            $env['MPLCONFIGDIR'] = sys_get_temp_dir() . '/matplotlib';
+            
+            // Crear directorio temporal para matplotlib si no existe
+            if (!is_dir($env['MPLCONFIGDIR'])) {
+                mkdir($env['MPLCONFIGDIR'], 0755, true);
+            }
+            
+            $process->setEnv($env);
 
             // Ejecutar el proceso
             $process->run();
