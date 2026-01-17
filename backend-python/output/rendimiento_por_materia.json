@@ -1,0 +1,30 @@
+[
+  {
+    "code_module":"AAA",
+    "average_score":69.0305149396
+  },
+  {
+    "code_module":"BBB",
+    "average_score":76.7063682263
+  },
+  {
+    "code_module":"CCC",
+    "average_score":73.2613978551
+  },
+  {
+    "code_module":"DDD",
+    "average_score":70.0907999351
+  },
+  {
+    "code_module":"EEE",
+    "average_score":81.1800659396
+  },
+  {
+    "code_module":"FFF",
+    "average_score":77.7075900601
+  },
+  {
+    "code_module":"GGG",
+    "average_score":79.7004929346
+  }
+]
