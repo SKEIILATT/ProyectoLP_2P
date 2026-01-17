@@ -44,7 +44,7 @@ export default function RendimientoDashboard() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:8080/api/rendimiento/general');
+        const response = await fetch('http://localhost:8000/api/rendimiento/general');
         if (!response.ok) throw new Error('Error en la respuesta del servidor');
         const result = await response.json();
         setData(result.data);
