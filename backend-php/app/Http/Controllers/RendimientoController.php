@@ -22,34 +22,28 @@ class RendimientoController extends Controller
     public function general(): JsonResponse
     {
         try {
-            // Ruta al script de análisis de rendimiento (un directorio arriba)
-            $scriptPath = dirname(base_path()) . '/backend-python/analisis_rendimiento.py';
-
-            // Ejecutar el script
-            $result = $this->pythonService->runScript($scriptPath);
-
-            if (!$result['success']) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Error ejecutando análisis de rendimiento',
-                    'error' => $result['error']
-                ], 500);
-            }
-
-            // Leer los archivos JSON generados por el script
+            // Leer los archivos JSON pre-generados (no re-ejecutar el script)
             $outputPath = dirname(base_path()) . '/backend-python/output/';
 
             $rendimientoMateria = $this->readJsonFile($outputPath . 'rendimiento_por_materia.json');
             $clicksVsNota = $this->readJsonFile($outputPath . 'clicks_vs_nota.json');
             $evaluacionesVsNota = $this->readJsonFile($outputPath . 'evaluaciones_vs_nota.json');
 
+            // Verificar que los archivos existan
+            if ($rendimientoMateria === null && $clicksVsNota === null && $evaluacionesVsNota === null) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se encontraron datos de rendimiento',
+                    'error' => 'Los archivos JSON no existen en: ' . $outputPath
+                ], 404);
+            }
+
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'rendimiento_por_materia' => $rendimientoMateria,
-                    'clicks_vs_nota' => $clicksVsNota,
-                    'evaluaciones_vs_nota' => $evaluacionesVsNota,
-                    'script_output' => $result['output']
+                    'rendimiento_por_materia' => $rendimientoMateria ?? [],
+                    'clicks_vs_nota' => $clicksVsNota ?? [],
+                    'evaluaciones_vs_nota' => $evaluacionesVsNota ?? []
                 ]
             ]);
 

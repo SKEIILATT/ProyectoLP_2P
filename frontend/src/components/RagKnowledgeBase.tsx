@@ -19,9 +19,16 @@ interface RagStats {
   };
 }
 
+interface InsightsData {
+  insights: string[];
+  fuentes_analizadas: number;
+}
+
 export default function RagKnowledgeBase() {
   const [stats, setStats] = useState<RagStats | null>(null);
+  const [insights, setInsights] = useState<InsightsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [insightsLoading, setInsightsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,6 +49,25 @@ export default function RagKnowledgeBase() {
       setError(err.response?.data?.error || 'Error al cargar estadísticas del RAG');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchInsights = async () => {
+    try {
+      setInsightsLoading(true);
+      const response = await axios.post('http://localhost:8000/api/rag/insights', {
+        modelo: 'mistral'
+      });
+
+      if (response.data.error) {
+        console.error('Error en insights:', response.data.error);
+      } else {
+        setInsights(response.data);
+      }
+    } catch (err: any) {
+      console.error('Error al generar insights:', err);
+    } finally {
+      setInsightsLoading(false);
     }
   };
 
@@ -198,8 +224,87 @@ export default function RagKnowledgeBase() {
           </div>
         </div>
 
+        {/* Sección de Insights/Hallazgos */}
+        <div className="bg-white rounded-xl shadow-md p-6 mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Hallazgos e Insights</h2>
+              <p className="text-gray-600 text-sm mt-1">
+                Análisis automático generado por IA sobre los datos indexados
+              </p>
+            </div>
+            <button
+              onClick={fetchInsights}
+              disabled={insightsLoading}
+              className={`px-6 py-3 rounded-lg font-medium transition-all flex items-center space-x-2 ${
+                insightsLoading
+                  ? 'bg-gray-300 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700 shadow-md hover:shadow-lg'
+              }`}
+            >
+              {insightsLoading ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Generando...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  <span>Generar Insights</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {!insights && !insightsLoading && (
+            <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+              <svg className="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Sin insights generados</h3>
+              <p className="text-gray-500 max-w-md mx-auto">
+                Haz clic en "Generar Insights" para que la IA analice los documentos indexados y extraiga los hallazgos más relevantes.
+              </p>
+            </div>
+          )}
+
+          {insights && insights.insights.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2 text-sm text-gray-500 mb-4">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>Basado en {insights.fuentes_analizadas} fragmentos analizados</span>
+              </div>
+
+              {insights.insights.map((insight, index) => (
+                <div
+                  key={index}
+                  className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100 rounded-xl p-5 hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-start space-x-4">
+                    <div className="flex-shrink-0">
+                      <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+                        {index + 1}
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-gray-800 leading-relaxed">{insight}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Información adicional */}
-        <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-blue-900 mb-2">Acerca de esta base de conocimiento</h3>
           <p className="text-blue-800 text-sm leading-relaxed">
             Este sistema RAG utiliza ChromaDB para almacenar y recuperar información vectorizada. Cada documento se divide en fragmentos (chunks)

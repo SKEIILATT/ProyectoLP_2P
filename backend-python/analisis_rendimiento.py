@@ -38,7 +38,7 @@ os.makedirs(OUTPUT_PATH, exist_ok=True)
 student_info = pd.read_csv(os.path.join(DATA_PATH, "studentInfo.csv"), encoding="latin1")
 student_assessment = pd.read_csv(os.path.join(DATA_PATH, "studentAssessment.csv"), encoding="latin1")
 assessments = pd.read_csv(os.path.join(DATA_PATH, "assessments.csv"), encoding="latin1")
-student_vle = pd.read_csv(os.path.join(DATA_PATH, "studentVle.csv"), encoding="latin1")
+student_vle = pd.read_csv(os.path.join(DATA_PATH, "vle.csv"), encoding="latin1")
 
 # ===============================
 # LIMPIEZA DE DATOS
