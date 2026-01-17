@@ -10,7 +10,7 @@ import pandas as pd
 import re
 import os
 
-CHROMA_PATH = "../documents/processed/chroma_db"
+CHROMA_PATH = "vectorstore/chroma_db"
 
 def cargar_rag():
     """Carga el sistema RAG desde ChromaDB"""

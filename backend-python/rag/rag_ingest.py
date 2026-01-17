@@ -7,12 +7,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_ollama import OllamaEmbeddings
 
-# Rutas de diferentes fuentes de datos
-DOCUMENTS_PATH = "../documents/raw"
+# Rutas de diferentes fuentes de datos (estructura unificada)
+DOCUMENTS_PATH = "documents_raw"
 DATA_RAW_PATH = "../data/raw"
 DATA_PROCESSED_PATH = "../data/processed/estadisticas_ecuador"
 DATA_ANALYSIS_PATH = "../data/analysis"
-CHROMA_PATH = "../documents/processed/chroma_db"
+KNOWLEDGE_SOURCES_PATH = "knowledge_sources"
+CHROMA_PATH = "vectorstore/chroma_db"
 
 #Dado que debemos separar la información de los pdf en chunks, entonces se debe de configurar el divisor de estos textos
 
@@ -96,6 +97,29 @@ def cargar_docs_de_directorio(ruta_dir, tipos_archivo=(".pdf", ".txt", ".csv"), 
                     # Fallback a CSVLoader si falla lectura de texto
                     loader = CSVLoader(ruta)
                     documentos.extend(loader.load())
+            elif ruta.lower().endswith(".json"):
+                # Cargar archivos JSON (papers scraped, etc.)
+                try:
+                    with open(ruta, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    nombre_archivo = os.path.basename(ruta)
+                    # Si es una lista de papers
+                    if isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, dict):
+                                contenido = "\n".join([f"{k}: {v}" for k, v in item.items()])
+                                documentos.append(Document(
+                                    page_content=contenido,
+                                    metadata={"source": ruta, "type": "json", "filename": nombre_archivo}
+                                ))
+                    else:
+                        contenido = json.dumps(data, indent=2, ensure_ascii=False)
+                        documentos.append(Document(
+                            page_content=contenido,
+                            metadata={"source": ruta, "type": "json", "filename": nombre_archivo}
+                        ))
+                except Exception as e:
+                    print(f"    Error procesando JSON {ruta}: {e}")
         except Exception as e:
             print(f"    Error procesando {ruta}: {e}")
             continue
@@ -129,7 +153,20 @@ def cargar_docs():
                 all_documents.extend(procesar_notebook(ruta_notebook))
     else:
         print(f"  Advertencia: Directorio no encontrado: {DATA_ANALYSIS_PATH}")
-    
+
+    # 4. Knowledge sources (papers y recursos scraped)
+    print(f"\n4. Cargando knowledge sources ({KNOWLEDGE_SOURCES_PATH})...")
+    papers_path = os.path.join(KNOWLEDGE_SOURCES_PATH, "papers")
+    resources_path = os.path.join(KNOWLEDGE_SOURCES_PATH, "resources")
+
+    # Cargar papers (JSON y TXT)
+    if os.path.exists(papers_path):
+        all_documents.extend(cargar_docs_de_directorio(papers_path, tipos_archivo=(".txt", ".json"), tipo_fuente="papers"))
+
+    # Cargar resources
+    if os.path.exists(resources_path):
+        all_documents.extend(cargar_docs_de_directorio(resources_path, tipos_archivo=(".txt", ".json"), tipo_fuente="resources"))
+
     print(f"\n📊 Total de documentos cargados: {len(all_documents)}")
     
     # Divide los documentos en chunks
