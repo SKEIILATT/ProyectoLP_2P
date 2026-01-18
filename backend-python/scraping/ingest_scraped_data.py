@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 class ScrapedDataIngestor:
     """Gestiona la ingesta de datos scraped a ChromaDB"""
     
-    def __init__(self, 
-                 papers_dir='datos/papers_academicos',
-                 chroma_dir='datos/chromadb',
-                 collection_name='knowledge_base'):
+    def __init__(self,
+                 papers_dir='../rag/knowledge_sources/papers',
+                 chroma_dir='../rag/vectorstore/chroma_db',
+                 collection_name='langchain'):
         """
         Inicializa el ingestor
         
@@ -386,11 +386,11 @@ URL: {paper.get('url', 'N/A')}
 def main():
     """Función principal"""
     try:
-        # Inicializar ingestor
+        # Inicializar ingestor (usa rutas unificadas al RAG)
         ingestor = ScrapedDataIngestor(
-            papers_dir='datos/papers_academicos',
-            chroma_dir='datos/chromadb',
-            collection_name='knowledge_base'
+            papers_dir='../rag/knowledge_sources/papers',
+            chroma_dir='../rag/vectorstore/chroma_db',
+            collection_name='langchain'
         )
         
         # Ingestar todos los datos

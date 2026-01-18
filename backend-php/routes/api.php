@@ -21,6 +21,8 @@ Route::prefix('abandono')->group(function () {
 // Rutas de RAG
 Route::prefix('rag')->group(function () {
     Route::post('/query', [RagController::class, 'query']);
+    Route::post('/insights', [RagController::class, 'insights']);
+    Route::get('/stats', [RagController::class, 'stats']);
     Route::get('/health', [RagController::class, 'health']);
     Route::get('/models', [RagController::class, 'models']);
 });

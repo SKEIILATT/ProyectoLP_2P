@@ -1,2 +1,13 @@
+# Datos grandes
 data/*.csv
 output/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+
+# ChromaDB (bases de datos locales)
+rag/vectorstore/chroma_db/

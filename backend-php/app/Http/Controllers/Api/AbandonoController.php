@@ -48,14 +48,11 @@ class AbandonoController extends Controller
                 ];
             }
 
-            // Datos de tendencia mensual (simulados ya que no tenemos datos mensuales)
-            // Distribuimos los abandonos equitativamente por mes
             $meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
             $abandononPorMes = $totalAbandonos / 12;
             $tendenciaMensual = [];
 
             foreach ($meses as $mes) {
-                // Agregamos variación aleatoria del ±15%
                 $variacion = rand(85, 115) / 100;
                 $tendenciaMensual[] = [
                     'mes' => $mes,
