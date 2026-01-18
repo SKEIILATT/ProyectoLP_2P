@@ -75,7 +75,13 @@ export default function ChatBot() {
     try {
       const response = await axios.post('http://localhost:8000/api/rag/query', {
         pregunta: input,
-        modelo: 'mistral'
+        modelo: 'tinyllama'
+      }, {
+        timeout: 180000,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
 
       setMessages(prev => prev.filter(m => !m.loading));
@@ -129,7 +135,13 @@ export default function ChatBot() {
 
     try {
       const response = await axios.post('http://localhost:8000/api/rag/insights', {
-        modelo: 'mistral'
+        modelo: 'tinyllama'
+      }, {
+        timeout: 180000,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
       });
 
       setMessages(prev => prev.filter(m => !m.loading));

@@ -78,7 +78,7 @@ def obtener_estadisticas_rag(vector):
     except Exception as e:
         return {"error": str(e)}
 
-def consultar(query, vector, modelo_ollama="mistral"):
+def consultar(query, vector, modelo_ollama="tinyllama"):
     """
     Realiza la consulta RAG sobre los documentos que se han analizado
 
@@ -96,14 +96,13 @@ def consultar(query, vector, modelo_ollama="mistral"):
     # El parámetro temperature=0.0 es para que la respuesta sea más precisa
     llm = ChatOllama(model=modelo_ollama, temperature=0.0)
 
-    # Configuramos el retriever para obtener un conjunto amplio de documentos
-    retriever = vector.as_retriever(search_kwargs={"k": 30})
+    # Configuramos el retriever para obtener documentos relevantes
+    retriever = vector.as_retriever(search_kwargs={"k": 5})
 
-    # Obtener documentos relevantes — pedimos más resultados para luego priorizar CSVs
+    # Obtener documentos relevantes
     docs = []
     try:
-        # Pedimos más documentos (k=30) y luego priorizamos CSVs en el ordering
-        docs = vector.similarity_search(query, k=30)
+        docs = vector.similarity_search(query, k=5)
     except Exception as e:
         print(f"  similarity_search falló: {e}")
 
@@ -133,11 +132,27 @@ def consultar(query, vector, modelo_ollama="mistral"):
         except Exception as e:
             print(f"  Metadata search falló: {e}")
 
+    # Si no hay documentos del RAG, usar solo conocimiento general del LLM
     if not docs:
+        print("  No se encontraron documentos relevantes, usando conocimiento general del LLM...")
+        llm = ChatOllama(model=modelo_ollama, temperature=0.3)
+        prompt_general = (
+            "Eres un asistente experto en educación y abandono estudiantil. "
+            "Responde la siguiente pregunta con tu conocimiento general. "
+            "Si la pregunta no está relacionada con educación, responde de manera útil y amigable.\n\n"
+            f"Pregunta: {query}\n\n"
+            "Respuesta:"
+        )
+        try:
+            resp = llm.invoke(prompt_general)
+            answer = getattr(resp, 'content', str(resp))
+        except Exception as e:
+            answer = f"Error al procesar: {e}"
+
         return {
-            "result": "No tengo suficiente información.",
+            "result": answer,
             "sources": [],
-            "metadata": {"docs_found": 0}
+            "metadata": {"docs_found": 0, "used_rag_context": False, "knowledge_type": "general"}
         }
 
     # PRIORIZAR CSVs: separar docs CSV y otros, luego ordenar dando preferencia a CSVs
@@ -167,8 +182,8 @@ def consultar(query, vector, modelo_ollama="mistral"):
         else:
             other_docs.append(doc)
 
-    # Construir lista priorizada: CSVs primero, luego otros (limitar a 10-15 para prompt)
-    docs = (csv_docs + other_docs)[:15]
+    # Construir lista priorizada: CSVs primero, luego otros (limitar a 3 para tinyllama)
+    docs = (csv_docs + other_docs)[:3]
 
     # FILTRAR documentos: priorizar los que contienen palabras clave
     palabras_clave = ['desercion', 'abandono', 'tasa', 'estudiantes', 'matriculados']
@@ -179,13 +194,13 @@ def consultar(query, vector, modelo_ollama="mistral"):
         if coincidencias >= 1:
             docs_relevantes.append((doc, coincidencias))
 
-    # Si hay docs con coincidencias, ordenar por coincidencias y tomar top 5
+    # Si hay docs con coincidencias, ordenar por coincidencias y tomar top 3
     if docs_relevantes:
         docs_relevantes.sort(key=lambda x: x[1], reverse=True)
-        docs_final = [doc for doc, _ in docs_relevantes[:5]]
+        docs_final = [doc for doc, _ in docs_relevantes[:3]]
     else:
-        # fallback: tomar primeros 5 priorizados
-        docs_final = docs[:5]
+        # fallback: tomar primeros 3 priorizados
+        docs_final = docs[:3]
 
     # Extraer fuentes únicas de los documentos utilizados
     sources = []
@@ -199,14 +214,17 @@ def consultar(query, vector, modelo_ollama="mistral"):
                 if filename not in sources:
                     sources.append(filename)
 
-    # Combinamos el contexto de los documentos (seguro ante diferentes shapes)
-    context = "\n\n".join([getattr(doc, 'page_content', str(doc)) for doc in docs_final])[:3000]
+    # Combinamos el contexto de los documentos (limitado para tinyllama)
+    context = "\n\n".join([getattr(doc, 'page_content', str(doc)) for doc in docs_final])[:1500]
 
-    # Creamos el prompt completo
+    # Creamos el prompt completo - Permite respuesta híbrida RAG + conocimiento general
     prompt_text = (
-        "Responde SOLAMENTE usando la información del contexto. "
-        "Si no encuentras la respuesta, contesta: 'No tengo suficiente información.'\n\n"
-        "Contexto:\n"
+        "Eres un asistente experto en educación y abandono estudiantil. "
+        "Usa PRIMERO la información del contexto proporcionado para responder. "
+        "Si el contexto tiene información relevante, basa tu respuesta en él. "
+        "Si el contexto NO tiene suficiente información, puedes complementar con tu conocimiento general, "
+        "pero indica claramente qué parte viene de los datos y qué parte es conocimiento general.\n\n"
+        "Contexto de documentos:\n"
         f"{context}\n\n"
         f"Pregunta: {query}\n\n"
         "Respuesta:"
@@ -229,13 +247,8 @@ def consultar(query, vector, modelo_ollama="mistral"):
         except Exception as e:
             answer = f"Error al invocar el modelo: {e}"
 
-    # Si el LLM indica que no tiene suficiente información, usar el fallback determinista sobre CSVs
-    if isinstance(answer, str) and (
-        "no tengo suficiente información" in answer.lower() or
-        "no tengo suficiente" in answer.lower() or
-        "no tengo" in answer.lower() or
-        answer.strip() == ""
-    ):
+    # Solo usar fallback de CSVs si la respuesta está completamente vacía
+    if isinstance(answer, str) and answer.strip() == "":
         csv_ans = answer_from_csvs(query)
         if csv_ans:
             return {
@@ -244,17 +257,21 @@ def consultar(query, vector, modelo_ollama="mistral"):
                 "metadata": {"fallback": True, "docs_found": len(docs_final)}
             }
 
+    # Determinar si la respuesta usó contexto RAG o conocimiento general
+    used_rag_context = len(docs_final) > 0 and len(context.strip()) > 100
+
     return {
         "result": answer,
         "sources": sources,
         "metadata": {
             "docs_found": len(docs_final),
+            "used_rag_context": used_rag_context,
             "csv_docs": len([d for d in docs_final if any(x in str(getattr(d, 'metadata', {}).get('source', '')).lower() for x in ['.csv'])]),
             "other_docs": len([d for d in docs_final if not any(x in str(getattr(d, 'metadata', {}).get('source', '')).lower() for x in ['.csv'])])
         }
     }
 
-def generar_insights(vector, modelo_ollama="mistral"):
+def generar_insights(vector, modelo_ollama="tinyllama"):
     """
     Genera insights automáticos analizando todos los datos disponibles en el RAG
 

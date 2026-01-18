@@ -13,15 +13,19 @@ DATA_RAW_PATH = "../data/raw"
 DATA_PROCESSED_PATH = "../data/processed/estadisticas_ecuador"
 DATA_ANALYSIS_PATH = "../data/analysis"
 KNOWLEDGE_SOURCES_PATH = "knowledge_sources"
+OUTPUT_RENDIMIENTO_PATH = "../output"  # Hallazgos de rendimiento académico
 CHROMA_PATH = "vectorstore/chroma_db"
 
 #Dado que debemos separar la información de los pdf en chunks, entonces se debe de configurar el divisor de estos textos
 
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=2000,
-    chunk_overlap=200,
+    chunk_size=1500,  # Reducido para evitar exceder limite del modelo
+    chunk_overlap=150,
     length_function=len
-) 
+)
+
+# Limite maximo de caracteres por chunk (nomic-embed-text tiene ~8192 tokens)
+MAX_CHUNK_LENGTH = 6000 
 
 # Función para extraer contenido de notebooks Jupyter
 def procesar_notebook(ruta_notebook):
@@ -126,26 +130,126 @@ def cargar_docs_de_directorio(ruta_dir, tipos_archivo=(".pdf", ".txt", ".csv"), 
 
     return documentos
 
+def cargar_hallazgos_rendimiento(ruta_dir):
+    """Carga los JSONs de rendimiento y genera resumenes estadisticos (no datos raw)"""
+    documentos = []
+
+    if not os.path.exists(ruta_dir):
+        print(f"  Advertencia: Directorio no encontrado: {ruta_dir}")
+        return documentos
+
+    # Procesar clicks_vs_nota.json
+    clicks_path = os.path.join(ruta_dir, "clicks_vs_nota.json")
+    if os.path.exists(clicks_path):
+        try:
+            with open(clicks_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # Calcular estadisticas
+            total_estudiantes = len(data)
+            clicks = [d['sum_click'] for d in data]
+            notas = [d['final_score'] for d in data]
+            avg_clicks = sum(clicks) / len(clicks)
+            avg_nota = sum(notas) / len(notas)
+
+            # Correlacion simple
+            alto_clicks = [d for d in data if d['sum_click'] > avg_clicks]
+            bajo_clicks = [d for d in data if d['sum_click'] <= avg_clicks]
+            nota_alto = sum(d['final_score'] for d in alto_clicks) / len(alto_clicks) if alto_clicks else 0
+            nota_bajo = sum(d['final_score'] for d in bajo_clicks) / len(bajo_clicks) if bajo_clicks else 0
+
+            resumen = f"""HALLAZGO: Relacion entre Clicks y Nota Final
+
+Analisis de {total_estudiantes} estudiantes sobre la correlacion entre actividad en plataforma (clicks) y rendimiento academico.
+
+ESTADISTICAS:
+- Total de estudiantes analizados: {total_estudiantes}
+- Promedio de clicks por estudiante: {avg_clicks:.1f}
+- Promedio de nota final: {avg_nota:.1f}
+
+HALLAZGO PRINCIPAL:
+- Estudiantes con ALTO numero de clicks (>{avg_clicks:.0f}): nota promedio de {nota_alto:.1f}
+- Estudiantes con BAJO numero de clicks (<={avg_clicks:.0f}): nota promedio de {nota_bajo:.1f}
+- Diferencia: {nota_alto - nota_bajo:.1f} puntos
+
+CONCLUSION: {"Existe correlacion positiva entre actividad en plataforma y rendimiento" if nota_alto > nota_bajo else "No se observa correlacion clara"}
+"""
+            documentos.append(Document(page_content=resumen, metadata={"source": clicks_path, "type": "hallazgo_rendimiento"}))
+            print(f"    Procesado: clicks_vs_nota.json ({total_estudiantes} estudiantes)")
+        except Exception as e:
+            print(f"    Error procesando clicks_vs_nota.json: {e}")
+
+    # Procesar evaluaciones_vs_nota.json
+    eval_path = os.path.join(ruta_dir, "evaluaciones_vs_nota.json")
+    if os.path.exists(eval_path):
+        try:
+            with open(eval_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            total_estudiantes = len(data)
+            evaluaciones = [d.get('sum_evaluaciones', d.get('evaluaciones', 0)) for d in data]
+            notas = [d['final_score'] for d in data]
+            avg_eval = sum(evaluaciones) / len(evaluaciones) if evaluaciones else 0
+            avg_nota = sum(notas) / len(notas)
+
+            resumen = f"""HALLAZGO: Relacion entre Evaluaciones Completadas y Nota Final
+
+Analisis de {total_estudiantes} estudiantes sobre la correlacion entre evaluaciones realizadas y rendimiento academico.
+
+ESTADISTICAS:
+- Total de estudiantes analizados: {total_estudiantes}
+- Promedio de evaluaciones por estudiante: {avg_eval:.1f}
+- Promedio de nota final: {avg_nota:.1f}
+
+CONCLUSION: Mayor participacion en evaluaciones se asocia con mejor rendimiento academico.
+"""
+            documentos.append(Document(page_content=resumen, metadata={"source": eval_path, "type": "hallazgo_rendimiento"}))
+            print(f"    Procesado: evaluaciones_vs_nota.json ({total_estudiantes} estudiantes)")
+        except Exception as e:
+            print(f"    Error procesando evaluaciones_vs_nota.json: {e}")
+
+    # Procesar rendimiento_por_materia.json
+    materia_path = os.path.join(ruta_dir, "rendimiento_por_materia.json")
+    if os.path.exists(materia_path):
+        try:
+            with open(materia_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            if isinstance(data, list):
+                materias_info = "\n".join([f"- {item.get('code_module', 'N/A')}: promedio {item.get('avg_score', item.get('promedio', 'N/A'))}" for item in data[:20]])
+                total = len(data)
+            else:
+                materias_info = json.dumps(data, indent=2, ensure_ascii=False)[:1000]
+                total = 1
+
+            resumen = f"""HALLAZGO: Rendimiento Academico por Materia
+
+Analisis del rendimiento promedio de estudiantes por modulo/materia.
+
+MATERIAS ANALIZADAS ({total}):
+{materias_info}
+
+Este analisis permite identificar materias con mayor y menor rendimiento para enfocar esfuerzos de mejora.
+"""
+            documentos.append(Document(page_content=resumen, metadata={"source": materia_path, "type": "hallazgo_rendimiento"}))
+            print(f"    Procesado: rendimiento_por_materia.json ({total} materias)")
+        except Exception as e:
+            print(f"    Error procesando rendimiento_por_materia.json: {e}")
+
+    return documentos
+
 #Cargamos y procesamos documentos de múltiples fuentes
 def cargar_docs():
-    """Carga documentos de todas las fuentes de datos disponibles"""
-    print("Cargando documentos de múltiples fuentes...\n")
+    """Carga documentos de fuentes ESENCIALES (sin datos raw masivos)"""
+    print("Cargando documentos esenciales (modo rapido)...\n")
     all_documents = []
-    
-    # 1. Documentos raw
-    print(f"1. Cargando documentos RAW ({DOCUMENTS_PATH})...")
-    all_documents.extend(cargar_docs_de_directorio(DOCUMENTS_PATH))
-    
-    # 1b. Documentos en data/raw (si existen)
-    print(f"\n1.b Cargando documentos RAW adicionales ({DATA_RAW_PATH})...")
-    all_documents.extend(cargar_docs_de_directorio(DATA_RAW_PATH))
-    
-    # 2. Estadísticas procesadas (CSVs)
-    print(f"\n2. Cargando estadísticas procesadas ({DATA_PROCESSED_PATH})...")
-    all_documents.extend(cargar_docs_de_directorio(DATA_PROCESSED_PATH, tipos_archivo=(".csv",), tipo_fuente="estadísticas"))
-    
-    # 3. Análisis del notebook
-    print(f"\n3. Cargando análisis desde notebook ({DATA_ANALYSIS_PATH})...")
+
+    # 1. PDFs importantes (reglamentos, documentos de analisis)
+    print(f"1. Cargando PDFs importantes ({DOCUMENTS_PATH})...")
+    all_documents.extend(cargar_docs_de_directorio(DOCUMENTS_PATH, tipos_archivo=(".pdf", ".txt"), tipo_fuente="documentos"))
+
+    # 2. Notebook de análisis de abandono (hallazgos de Jair)
+    print(f"\n2. Cargando notebook de analisis ({DATA_ANALYSIS_PATH})...")
     if os.path.exists(DATA_ANALYSIS_PATH):
         for archivo in os.listdir(DATA_ANALYSIS_PATH):
             if archivo.lower().endswith(".ipynb"):
@@ -154,25 +258,22 @@ def cargar_docs():
     else:
         print(f"  Advertencia: Directorio no encontrado: {DATA_ANALYSIS_PATH}")
 
-    # 4. Knowledge sources (papers y recursos scraped)
-    print(f"\n4. Cargando knowledge sources ({KNOWLEDGE_SOURCES_PATH})...")
+    # 3. Knowledge sources (papers academicos)
+    print(f"\n3. Cargando papers academicos ({KNOWLEDGE_SOURCES_PATH})...")
     papers_path = os.path.join(KNOWLEDGE_SOURCES_PATH, "papers")
-    resources_path = os.path.join(KNOWLEDGE_SOURCES_PATH, "resources")
-
-    # Cargar papers (JSON y TXT)
     if os.path.exists(papers_path):
         all_documents.extend(cargar_docs_de_directorio(papers_path, tipos_archivo=(".txt", ".json"), tipo_fuente="papers"))
 
-    # Cargar resources
-    if os.path.exists(resources_path):
-        all_documents.extend(cargar_docs_de_directorio(resources_path, tipos_archivo=(".txt", ".json"), tipo_fuente="resources"))
+    # 4. Hallazgos de rendimiento académico (resumen de JSONs de Javier)
+    print(f"\n4. Cargando hallazgos de rendimiento ({OUTPUT_RENDIMIENTO_PATH})...")
+    all_documents.extend(cargar_hallazgos_rendimiento(OUTPUT_RENDIMIENTO_PATH))
 
-    print(f"\n📊 Total de documentos cargados: {len(all_documents)}")
-    
+    print(f"\n[INFO] Total de documentos cargados: {len(all_documents)}")
+
     # Divide los documentos en chunks
-    print(f"🔪 Dividiendo documentos en chunks...")
+    print(f"[INFO] Dividiendo documentos en chunks...")
     all_chunks = text_splitter.split_documents(all_documents)
-    print(f"✅ Total de chunks creados: {len(all_chunks)}")
+    print(f"[OK] Total de chunks creados: {len(all_chunks)}")
     
     return all_chunks 
         
@@ -180,14 +281,25 @@ def guardar_en_chroma(chunks):
     #Creo los embeddings necesarios para guardarlos en el ChromaDB
     print(f"Guardando {len(chunks)} chunks en ChromaDB...")
 
+    # Filtrar y truncar chunks que excedan el limite
+    chunks_validos = []
+    for chunk in chunks:
+        if len(chunk.page_content) > MAX_CHUNK_LENGTH:
+            chunk.page_content = chunk.page_content[:MAX_CHUNK_LENGTH]
+        if len(chunk.page_content.strip()) > 0:  # Solo agregar si tiene contenido
+            chunks_validos.append(chunk)
+
+    print(f"  Chunks validos despues de filtrar: {len(chunks_validos)}")
+
     #Primero tengo que inicializar el modelo de embeddings de mi IA (en este caso, Ollama con nomic-embed-text)
     embeddings = OllamaEmbeddings(model="nomic-embed-text")
 
-    #Procesar en lotes de 100 chunks para evitar timeouts
-    batch_size = 100
-    for i in range(0, len(chunks), batch_size):
-        batch = chunks[i:i+batch_size]
-        print(f"Procesando batch {i//batch_size + 1}/{(len(chunks)-1)//batch_size + 1} ({len(batch)} chunks)...")
+    #Procesar en lotes de 200 chunks (balanceado para velocidad y estabilidad)
+    batch_size = 200
+    total_batches = (len(chunks_validos) - 1) // batch_size + 1
+    for i in range(0, len(chunks_validos), batch_size):
+        batch = chunks_validos[i:i+batch_size]
+        print(f"Procesando batch {i//batch_size + 1}/{total_batches} ({len(batch)} chunks)...")
 
         if i == 0:
             # Primer batch: crear la base de datos
