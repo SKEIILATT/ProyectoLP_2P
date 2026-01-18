@@ -21,10 +21,7 @@ export default function ChatBot() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Verificar estado del RAG al cargar
     checkRagHealth();
-
-    // Mensaje de bienvenida
     setMessages([{
       id: '1',
       text: 'Bienvenido al asistente virtual de análisis de abandono estudiantil. Puedo responder preguntas sobre estadísticas de Ecuador 2022 y análisis de factores de riesgo.',
@@ -75,7 +72,7 @@ export default function ChatBot() {
     try {
       const response = await axios.post('http://localhost:8000/api/rag/query', {
         pregunta: input,
-        modelo: 'tinyllama'
+        modelo: 'llama3'
       }, {
         timeout: 180000,
         headers: {
@@ -135,7 +132,7 @@ export default function ChatBot() {
 
     try {
       const response = await axios.post('http://localhost:8000/api/rag/insights', {
-        modelo: 'tinyllama'
+        modelo: 'llama3'
       }, {
         timeout: 180000,
         headers: {

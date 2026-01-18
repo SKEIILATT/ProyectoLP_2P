@@ -1,28 +1,39 @@
 '''
 Script de Consulta RAG
 Permite hacer preguntas sobre los documentos PDF Procesados
+Usa Groq para inferencia rápida en la nube
 '''
 import argparse
 from langchain_community.vectorstores import Chroma
-from langchain_ollama import OllamaEmbeddings, ChatOllama
+from langchain_ollama import OllamaEmbeddings
+from langchain_groq import ChatGroq
 from langchain_core.documents import Document
 import pandas as pd
 import re
 import os
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
 
 CHROMA_PATH = "vectorstore/chroma_db"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+# Modelos disponibles en Groq (actualizados 2025)
+GROQ_MODELS = {
+    "llama3": "llama-3.1-8b-instant",
+    "llama3-70b": "llama-3.3-70b-versatile",
+    "mixtral": "mistral-saba-24b",
+    "gemma": "gemma2-9b-it"
+}
 
 def cargar_rag():
     """Carga el sistema RAG desde ChromaDB"""
-    print("Cargando sistema RAG")
-    # Me permite cargar el modelo de embeddings de mi IA (En este caso, Ollama con nomic-embed-text)
     embeddings = OllamaEmbeddings(model="nomic-embed-text")
-    # Cargamos el vector de ChromaDB
     vector = Chroma(
         persist_directory=CHROMA_PATH,
         embedding_function=embeddings
     )
-    print("Vector y sistema RAG cargado correctamente")
     return vector
 
 def obtener_estadisticas_rag(vector):
@@ -78,23 +89,44 @@ def obtener_estadisticas_rag(vector):
     except Exception as e:
         return {"error": str(e)}
 
-def consultar(query, vector, modelo_ollama="tinyllama"):
+def consultar(query, vector, modelo="llama3"):
     """
     Realiza la consulta RAG sobre los documentos que se han analizado
 
     Args:
         query: La consulta que se desea hacer sobre los documentos
         vector: El vector de ChromaDB que se ha creado para los documentos
-        modelo_ollama: El modelo ollama que se ha utilizado para la consulta
+        modelo: El modelo de Groq a utilizar (llama3, llama3-70b, mixtral, gemma)
 
     Returns:
         dict con keys: result, sources, metadata
     """
-    print(f"Generando respuesta con modelo {modelo_ollama}")
+    modelo_groq = GROQ_MODELS.get(modelo, "llama-3.1-8b-instant")
 
-    # Aquí inicializo el modelo de IA que se va a utilizar para las consultas
-    # El parámetro temperature=0.0 es para que la respuesta sea más precisa
-    llm = ChatOllama(model=modelo_ollama, temperature=0.0)
+    # Inicializar el modelo de Groq (inferencia rápida en la nube)
+    llm = ChatGroq(
+        api_key=GROQ_API_KEY,
+        model_name=modelo_groq,
+        temperature=0.0
+    )
+
+    query_lower = query.lower()
+
+    # DETECCION TEMPRANA: Si pregunta sobre Ecuador, estadísticas, tasa, deserción - usar CSVs directamente
+    es_pregunta_estadisticas = any(kw in query_lower for kw in [
+        'ecuador', '2022', 'tasa', 'desercion', 'deserción',
+        'abandonaron', 'matriculados', 'cuantos', 'cuántos',
+        'estadistica', 'estadística', 'porcentaje'
+    ])
+
+    if es_pregunta_estadisticas:
+        csv_answer = answer_from_csvs(query)
+        if csv_answer and not csv_answer.startswith("Error"):
+            return {
+                "result": csv_answer,
+                "sources": ["resumen_general_desercion_2022.csv", "desercion_por_sexo.csv", "desercion_por_tipo_institucion.csv"],
+                "metadata": {"docs_found": 1, "used_rag_context": True, "csv_direct": True}
+            }
 
     # Configuramos el retriever para obtener documentos relevantes
     retriever = vector.as_retriever(search_kwargs={"k": 5})
@@ -102,13 +134,15 @@ def consultar(query, vector, modelo_ollama="tinyllama"):
     # Obtener documentos relevantes
     docs = []
     try:
-        docs = vector.similarity_search(query, k=5)
-    except Exception as e:
-        print(f"  similarity_search falló: {e}")
+        # Si es pregunta de estadísticas, buscar con términos específicos
+        if es_pregunta_estadisticas:
+            docs = vector.similarity_search("ESTADISTICAS ECUADOR 2022 desercion abandono tasa estudiantes", k=10)
+        else:
+            docs = vector.similarity_search(query, k=5)
+    except Exception:
+        pass
 
-    # Fallback: búsqueda explícita por metadatas (filenames con palabras clave)
     if not docs or len(docs) < 5:
-        print(f"  Solo {len(docs) if docs else 0} docs encontrados, buscando por metadatas...")
         try:
             collection = getattr(vector, '_collection', None)
             if collection is not None:
@@ -127,15 +161,17 @@ def consultar(query, vector, modelo_ollama="tinyllama"):
 
                 # Agregar docs encontrados por metadata
                 if matched_indices:
-                    for i in matched_indices[:20]:  # Limitar a 20
+                    for i in matched_indices[:20]:
                         docs.append(Document(page_content=documents[i], metadata=metadatas[i]))
-        except Exception as e:
-            print(f"  Metadata search falló: {e}")
+        except Exception:
+            pass
 
-    # Si no hay documentos del RAG, usar solo conocimiento general del LLM
     if not docs:
-        print("  No se encontraron documentos relevantes, usando conocimiento general del LLM...")
-        llm = ChatOllama(model=modelo_ollama, temperature=0.3)
+        llm_fallback = ChatGroq(
+            api_key=GROQ_API_KEY,
+            model_name=GROQ_MODELS.get(modelo, "llama-3.1-8b-instant"),
+            temperature=0.3
+        )
         prompt_general = (
             "Eres un asistente experto en educación y abandono estudiantil. "
             "Responde la siguiente pregunta con tu conocimiento general. "
@@ -144,7 +180,7 @@ def consultar(query, vector, modelo_ollama="tinyllama"):
             "Respuesta:"
         )
         try:
-            resp = llm.invoke(prompt_general)
+            resp = llm_fallback.invoke(prompt_general)
             answer = getattr(resp, 'content', str(resp))
         except Exception as e:
             answer = f"Error al procesar: {e}"
@@ -230,9 +266,7 @@ def consultar(query, vector, modelo_ollama="tinyllama"):
         "Respuesta:"
     )
 
-    print(f"\nPregunta: {query}\n")
-
-    # Ejecutamos la consulta con el LLM de forma robusta
+    # Ejecutamos la consulta con el LLM
     answer = None
     try:
         resp = llm(prompt_text)
@@ -271,20 +305,17 @@ def consultar(query, vector, modelo_ollama="tinyllama"):
         }
     }
 
-def generar_insights(vector, modelo_ollama="tinyllama"):
+def generar_insights(vector, modelo="llama3"):
     """
     Genera insights automáticos analizando todos los datos disponibles en el RAG
-
-    Args:
-        vector: El vector de ChromaDB con los documentos
-        modelo_ollama: El modelo ollama a utilizar
-
-    Returns:
-        dict con insights encontrados
     """
-    print("Generando insights automáticos...")
 
-    llm = ChatOllama(model=modelo_ollama, temperature=0.2)
+    modelo_groq = GROQ_MODELS.get(modelo, "llama-3.1-8b-instant")
+    llm = ChatGroq(
+        api_key=GROQ_API_KEY,
+        model_name=modelo_groq,
+        temperature=0.2
+    )
 
     # Obtener documentos clave
     try:
@@ -343,9 +374,7 @@ Hallazgos:"""
         }
 
 def answer_from_csvs(query):
-    """Intentar responder consultas frecuentes directamente desde los CSVs procesados.
-    Maneja preguntas como: total abandonaron, por sexo, tasa de deserción, por tipo de institución.
-    """
+    """Responde consultas sobre estadísticas de Ecuador directamente desde los CSVs procesados."""
     base = "../data/processed/estadisticas_ecuador"
     try:
         resumen_path = os.path.join(base, "resumen_general_desercion_2022.csv")
@@ -354,43 +383,88 @@ def answer_from_csvs(query):
 
         q = query.lower()
 
-        # Total abandonaron
-        if re.search(r"cuant[oa]|cuánt[oa]|numero|número", q) and re.search(r"abandon|desercion", q):
+        # Tasa de deserción general
+        if re.search(r"tasa|porcentaje", q) and re.search(r"desercion|deserción|abandon", q):
             if os.path.exists(resumen_path):
                 df = pd.read_csv(resumen_path)
-                # Buscar la fila 'Total Estudiantes que Abandonaron' o columna equivalente
+                if 'Indicador' in df.columns and 'Valor' in df.columns:
+                    # Buscar tasa de deserción
+                    row_tasa = df[df['Indicador'].str.contains('Tasa de Deserción', case=False, na=False)]
+                    row_total = df[df['Indicador'].str.contains('Total Estudiantes Matriculados', case=False, na=False)]
+                    row_abandon = df[df['Indicador'].str.contains('Total Estudiantes que Abandonaron', case=False, na=False)]
+
+                    respuesta = "Según los datos de Ecuador 2022:\n"
+                    if not row_tasa.empty:
+                        respuesta += f"- Tasa de Deserción: {row_tasa['Valor'].iloc[0]}%\n"
+                    if not row_total.empty:
+                        respuesta += f"- Total Estudiantes Matriculados: {int(row_total['Valor'].iloc[0]):,}\n"
+                    if not row_abandon.empty:
+                        respuesta += f"- Total Estudiantes que Abandonaron: {int(row_abandon['Valor'].iloc[0]):,}\n"
+
+                    row_ret = df[df['Indicador'].str.contains('Tasa de Retención', case=False, na=False)]
+                    if not row_ret.empty:
+                        respuesta += f"- Tasa de Retención: {row_ret['Valor'].iloc[0]}%"
+
+                    return respuesta
+
+        # Total abandonaron
+        if re.search(r"cuant[oa]|cuánt[oa]|numero|número|total", q) and re.search(r"abandon|desercion|deserción", q):
+            if os.path.exists(resumen_path):
+                df = pd.read_csv(resumen_path)
                 if 'Indicador' in df.columns and 'Valor' in df.columns:
                     row = df[df['Indicador'].str.contains('Total Estudiantes que Abandonaron', case=False, na=False)]
                     if not row.empty:
                         val = int(row['Valor'].iloc[0])
-                        return f"En 2022 abandonaron {val} estudiantes (según resumen_general_desercion_2022.csv)."
-                # fallback: sumar si hay columna
+                        row_total = df[df['Indicador'].str.contains('Total Estudiantes Matriculados', case=False, na=False)]
+                        total = int(row_total['Valor'].iloc[0]) if not row_total.empty else None
+                        if total:
+                            return f"En Ecuador 2022, abandonaron {val:,} estudiantes de un total de {total:,} matriculados."
+                        return f"En Ecuador 2022, abandonaron {val:,} estudiantes."
                 return "No pude leer el resumen de abandono correctamente."
 
         # Desercion por sexo
-        if 'sexo' in q or 'mujer' in q or 'hombre' in q:
+        if 'sexo' in q or 'mujer' in q or 'hombre' in q or 'genero' in q or 'género' in q:
             if os.path.exists(sexo_path):
                 df = pd.read_csv(sexo_path)
-                # Normalizar columnas
-                cols = [c.lower() for c in df.columns]
-                # Buscar filas por sexo
-                lines = []
+                lines = ["Deserción por sexo en Ecuador 2022:"]
                 for _, r in df.iterrows():
                     s = r.iloc[0]
                     aban = r.iloc[1]
                     total = r.iloc[2] if len(r) > 2 else None
-                    lines.append(f"{s}: {int(aban)} abandonaron de {int(total)} matriculados (tasa: {r.iloc[3]}%)")
-                return "; ".join(lines)
+                    tasa = r.iloc[3] if len(r) > 3 else None
+                    if tasa:
+                        lines.append(f"- {s}: {int(aban):,} abandonaron de {int(total):,} matriculados (tasa: {tasa}%)")
+                    else:
+                        lines.append(f"- {s}: {int(aban):,} abandonaron")
+                return "\n".join(lines)
 
         # Desercion por tipo de institucion
-        if 'tipo' in q or 'institucion' in q:
+        if 'tipo' in q or 'institucion' in q or 'institución' in q:
             if os.path.exists(tipo_path):
                 df = pd.read_csv(tipo_path)
-                # convertir a texto simple
-                items = []
+                lines = ["Deserción por tipo de institución en Ecuador 2022:"]
                 for _, r in df.iterrows():
-                    items.append(" - ".join([str(x) for x in r.values]))
-                return "\n".join(items[:20])
+                    lines.append("- " + " - ".join([str(x) for x in r.values]))
+                return "\n".join(lines[:20])
+
+        # Pregunta general sobre estadísticas Ecuador
+        if 'ecuador' in q or '2022' in q:
+            if os.path.exists(resumen_path):
+                df = pd.read_csv(resumen_path)
+                if 'Indicador' in df.columns and 'Valor' in df.columns:
+                    respuesta = "Resumen de deserción estudiantil en Ecuador 2022:\n"
+                    for _, row in df.iterrows():
+                        indicador = row['Indicador']
+                        valor = row['Valor']
+                        if pd.notna(valor):
+                            if 'Tasa' in indicador or '%' in str(indicador):
+                                respuesta += f"- {indicador}: {valor}%\n"
+                            else:
+                                try:
+                                    respuesta += f"- {indicador}: {int(valor):,}\n"
+                                except ValueError:
+                                    respuesta += f"- {indicador}: {valor}\n"
+                    return respuesta.strip()
 
     except Exception as e:
         return f"Error leyendo CSVs: {e}"
@@ -398,54 +472,21 @@ def answer_from_csvs(query):
     return None
 
 def main():
-    """Función principal del script"""
-    # Configuramos el parser de argumentos CLI
-    parser = argparse.ArgumentParser(
-        description="Consulta documentos procesados usando RAG",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Ejemplos de uso:
-  python rag_query.py "¿Cuál es el proceso para obtener una beca?"
-  python rag_query.py "¿Qué dice el reglamento sobre el control de asistencia?" --modelo llama3.1
-        """
-    )
-    
-    parser.add_argument(
-        "pregunta",
-        type=str,
-        help="La pregunta que quieres hacer sobre los documentos"
-    )
-    
-    parser.add_argument(
-        "--modelo",
-        type=str,
-        default="mistral",
-        help="Modelo de Ollama a usar (default: mistral). Ejemplos: llama3, llama3.1, mistral, etc."
-    )
-    
+    """Función principal para ejecución CLI"""
+    parser = argparse.ArgumentParser(description="Consulta documentos procesados usando RAG")
+    parser.add_argument("pregunta", type=str, help="La pregunta sobre los documentos")
+    parser.add_argument("--modelo", type=str, default="llama3", help="Modelo a usar")
+
     args = parser.parse_args()
-    
-    # Cargamos el sistema RAG
     vectorstore = cargar_rag()
-    
-    # Realizamos la consulta
+
     try:
         resultado = consultar(args.pregunta, vectorstore, args.modelo)
-        
-        # Mostramos la respuesta
-        print("\n" + "="*80)
-        print("RESPUESTA:")
-        print("="*80)
         print(resultado["result"])
-        
     except Exception as e:
-        print(f"\n Error al procesar la consulta: {str(e)}")
-        print("\nAsegúrate de que:")
-        print("  1. Ollama está corriendo (ollama serve)")
-        print("  2. El modelo especificado está disponible (ollama pull llama3)")
-        print("  3. La base de datos ChromaDB existe y fue creada con rag_ingest.py")
+        print(f"Error: {e}")
         return 1
-    
+
     return 0
 
 if __name__ == "__main__":

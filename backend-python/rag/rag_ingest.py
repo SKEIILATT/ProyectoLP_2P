@@ -7,51 +7,44 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_ollama import OllamaEmbeddings
 
-# Rutas de diferentes fuentes de datos (estructura unificada)
 DOCUMENTS_PATH = "documents_raw"
 DATA_RAW_PATH = "../data/raw"
 DATA_PROCESSED_PATH = "../data/processed/estadisticas_ecuador"
 DATA_ANALYSIS_PATH = "../data/analysis"
+DATA_ROOT_PATH = "../data"
 KNOWLEDGE_SOURCES_PATH = "knowledge_sources"
-OUTPUT_RENDIMIENTO_PATH = "../output"  # Hallazgos de rendimiento académico
+OUTPUT_RENDIMIENTO_PATH = "../output"
 CHROMA_PATH = "vectorstore/chroma_db"
 
-#Dado que debemos separar la información de los pdf en chunks, entonces se debe de configurar el divisor de estos textos
-
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1500,  # Reducido para evitar exceder limite del modelo
+    chunk_size=1500,
     chunk_overlap=150,
     length_function=len
 )
 
-# Limite maximo de caracteres por chunk (nomic-embed-text tiene ~8192 tokens)
-MAX_CHUNK_LENGTH = 6000 
+MAX_CHUNK_LENGTH = 6000
 
-# Función para extraer contenido de notebooks Jupyter
 def procesar_notebook(ruta_notebook):
     """Extrae el contenido de un notebook Jupyter y lo convierte en documentos"""
-    print(f"  Extrayendo contenido del notebook: {ruta_notebook}")
     try:
         with open(ruta_notebook, 'r', encoding='utf-8') as f:
             notebook = nbformat.read(f, as_version=4)
-        
+
         contenido = []
         for i, celda in enumerate(notebook.cells):
             if celda.cell_type == 'markdown':
                 contenido.append(f"# Markdown (Celda {i})\n{celda.source}")
             elif celda.cell_type == 'code':
                 contenido.append(f"# Código (Celda {i})\n{celda.source}")
-            
-            # Agregar outputs si existen
+
             if hasattr(celda, 'outputs') and celda.outputs:
                 for output in celda.outputs:
                     if hasattr(output, 'text'):
                         contenido.append(f"# Output (Celda {i})\n{output.text}")
-        
+
         contenido_completo = "\n\n".join(contenido)
         return [Document(page_content=contenido_completo, metadata={"source": ruta_notebook, "type": "notebook"})]
-    except Exception as e:
-        print(f"  Error procesando notebook: {e}")
+    except Exception:
         return []
 
 def cargar_docs_de_directorio(ruta_dir, tipos_archivo=(".pdf", ".txt", ".csv"), tipo_fuente="documento"):
@@ -59,7 +52,6 @@ def cargar_docs_de_directorio(ruta_dir, tipos_archivo=(".pdf", ".txt", ".csv"), 
     documentos = []
 
     if not os.path.exists(ruta_dir):
-        print(f"  Advertencia: Directorio no encontrado: {ruta_dir}")
         return documentos
 
     found_files = []
@@ -68,16 +60,7 @@ def cargar_docs_de_directorio(ruta_dir, tipos_archivo=(".pdf", ".txt", ".csv"), 
             if f.lower().endswith(tipos_archivo):
                 found_files.append(os.path.join(root, f))
 
-    if not found_files:
-        print(f"  No se encontraron archivos en {ruta_dir}")
-        return documentos
-
-    print(f"  Encontrados {len(found_files)} archivos en {ruta_dir} (recursivo)")
-
     for ruta in found_files:
-        archivo = os.path.basename(ruta)
-        print(f"    Procesando {os.path.relpath(ruta)}...")
-
         try:
             if ruta.lower().endswith(".pdf"):
                 loader = PyPDFLoader(ruta)
@@ -86,11 +69,9 @@ def cargar_docs_de_directorio(ruta_dir, tipos_archivo=(".pdf", ".txt", ".csv"), 
                 loader = TextLoader(ruta, encoding='utf-8')
                 documentos.extend(loader.load())
             elif ruta.lower().endswith(".csv"):
-                # Leer CSV como texto completo para mejor búsqueda semántica
                 try:
                     with open(ruta, 'r', encoding='utf-8') as f:
                         contenido_csv = f.read()
-                    # Agregar nombre del archivo al contenido para mejorar búsqueda
                     nombre_archivo = os.path.basename(ruta)
                     contenido_con_titulo = f"Archivo: {nombre_archivo}\n\nDatos:\n{contenido_csv}"
                     documentos.append(Document(
@@ -98,16 +79,13 @@ def cargar_docs_de_directorio(ruta_dir, tipos_archivo=(".pdf", ".txt", ".csv"), 
                         metadata={"source": ruta, "type": "csv", "filename": nombre_archivo}
                     ))
                 except Exception:
-                    # Fallback a CSVLoader si falla lectura de texto
                     loader = CSVLoader(ruta)
                     documentos.extend(loader.load())
             elif ruta.lower().endswith(".json"):
-                # Cargar archivos JSON (papers scraped, etc.)
                 try:
                     with open(ruta, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                     nombre_archivo = os.path.basename(ruta)
-                    # Si es una lista de papers
                     if isinstance(data, list):
                         for item in data:
                             if isinstance(item, dict):
@@ -122,37 +100,32 @@ def cargar_docs_de_directorio(ruta_dir, tipos_archivo=(".pdf", ".txt", ".csv"), 
                             page_content=contenido,
                             metadata={"source": ruta, "type": "json", "filename": nombre_archivo}
                         ))
-                except Exception as e:
-                    print(f"    Error procesando JSON {ruta}: {e}")
-        except Exception as e:
-            print(f"    Error procesando {ruta}: {e}")
+                except Exception:
+                    pass
+        except Exception:
             continue
 
     return documentos
 
 def cargar_hallazgos_rendimiento(ruta_dir):
-    """Carga los JSONs de rendimiento y genera resumenes estadisticos (no datos raw)"""
+    """Carga los JSONs de rendimiento y genera resúmenes estadísticos"""
     documentos = []
 
     if not os.path.exists(ruta_dir):
-        print(f"  Advertencia: Directorio no encontrado: {ruta_dir}")
         return documentos
 
-    # Procesar clicks_vs_nota.json
     clicks_path = os.path.join(ruta_dir, "clicks_vs_nota.json")
     if os.path.exists(clicks_path):
         try:
             with open(clicks_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
-            # Calcular estadisticas
             total_estudiantes = len(data)
             clicks = [d['sum_click'] for d in data]
             notas = [d['final_score'] for d in data]
             avg_clicks = sum(clicks) / len(clicks)
             avg_nota = sum(notas) / len(notas)
 
-            # Correlacion simple
             alto_clicks = [d for d in data if d['sum_click'] > avg_clicks]
             bajo_clicks = [d for d in data if d['sum_click'] <= avg_clicks]
             nota_alto = sum(d['final_score'] for d in alto_clicks) / len(alto_clicks) if alto_clicks else 0
@@ -175,11 +148,9 @@ HALLAZGO PRINCIPAL:
 CONCLUSION: {"Existe correlacion positiva entre actividad en plataforma y rendimiento" if nota_alto > nota_bajo else "No se observa correlacion clara"}
 """
             documentos.append(Document(page_content=resumen, metadata={"source": clicks_path, "type": "hallazgo_rendimiento"}))
-            print(f"    Procesado: clicks_vs_nota.json ({total_estudiantes} estudiantes)")
-        except Exception as e:
-            print(f"    Error procesando clicks_vs_nota.json: {e}")
+        except Exception:
+            pass
 
-    # Procesar evaluaciones_vs_nota.json
     eval_path = os.path.join(ruta_dir, "evaluaciones_vs_nota.json")
     if os.path.exists(eval_path):
         try:
@@ -204,11 +175,9 @@ ESTADISTICAS:
 CONCLUSION: Mayor participacion en evaluaciones se asocia con mejor rendimiento academico.
 """
             documentos.append(Document(page_content=resumen, metadata={"source": eval_path, "type": "hallazgo_rendimiento"}))
-            print(f"    Procesado: evaluaciones_vs_nota.json ({total_estudiantes} estudiantes)")
-        except Exception as e:
-            print(f"    Error procesando evaluaciones_vs_nota.json: {e}")
+        except Exception:
+            pass
 
-    # Procesar rendimiento_por_materia.json
     materia_path = os.path.join(ruta_dir, "rendimiento_por_materia.json")
     if os.path.exists(materia_path):
         try:
@@ -232,84 +201,107 @@ MATERIAS ANALIZADAS ({total}):
 Este analisis permite identificar materias con mayor y menor rendimiento para enfocar esfuerzos de mejora.
 """
             documentos.append(Document(page_content=resumen, metadata={"source": materia_path, "type": "hallazgo_rendimiento"}))
-            print(f"    Procesado: rendimiento_por_materia.json ({total} materias)")
-        except Exception as e:
-            print(f"    Error procesando rendimiento_por_materia.json: {e}")
+        except Exception:
+            pass
 
     return documentos
 
-#Cargamos y procesamos documentos de múltiples fuentes
 def cargar_docs():
-    """Carga documentos de fuentes ESENCIALES (sin datos raw masivos)"""
-    print("Cargando documentos esenciales (modo rapido)...\n")
+    """Carga TODOS los documentos importantes del proyecto"""
     all_documents = []
 
-    # 1. PDFs importantes (reglamentos, documentos de analisis)
-    print(f"1. Cargando PDFs importantes ({DOCUMENTS_PATH})...")
     all_documents.extend(cargar_docs_de_directorio(DOCUMENTS_PATH, tipos_archivo=(".pdf", ".txt"), tipo_fuente="documentos"))
 
-    # 2. Notebook de análisis de abandono (hallazgos de Jair)
-    print(f"\n2. Cargando notebook de analisis ({DATA_ANALYSIS_PATH})...")
     if os.path.exists(DATA_ANALYSIS_PATH):
         for archivo in os.listdir(DATA_ANALYSIS_PATH):
             if archivo.lower().endswith(".ipynb"):
                 ruta_notebook = os.path.join(DATA_ANALYSIS_PATH, archivo)
                 all_documents.extend(procesar_notebook(ruta_notebook))
-    else:
-        print(f"  Advertencia: Directorio no encontrado: {DATA_ANALYSIS_PATH}")
 
-    # 3. Knowledge sources (papers academicos)
-    print(f"\n3. Cargando papers academicos ({KNOWLEDGE_SOURCES_PATH})...")
-    papers_path = os.path.join(KNOWLEDGE_SOURCES_PATH, "papers")
-    if os.path.exists(papers_path):
-        all_documents.extend(cargar_docs_de_directorio(papers_path, tipos_archivo=(".txt", ".json"), tipo_fuente="papers"))
+    if os.path.exists(KNOWLEDGE_SOURCES_PATH):
+        all_documents.extend(cargar_docs_de_directorio(KNOWLEDGE_SOURCES_PATH, tipos_archivo=(".txt", ".json", ".pdf"), tipo_fuente="knowledge"))
 
-    # 4. Hallazgos de rendimiento académico (resumen de JSONs de Javier)
-    print(f"\n4. Cargando hallazgos de rendimiento ({OUTPUT_RENDIMIENTO_PATH})...")
     all_documents.extend(cargar_hallazgos_rendimiento(OUTPUT_RENDIMIENTO_PATH))
 
-    print(f"\n[INFO] Total de documentos cargados: {len(all_documents)}")
+    if os.path.exists(DATA_PROCESSED_PATH):
+        for archivo in os.listdir(DATA_PROCESSED_PATH):
+            if archivo.lower().endswith(".csv"):
+                ruta_csv = os.path.join(DATA_PROCESSED_PATH, archivo)
+                try:
+                    with open(ruta_csv, 'r', encoding='utf-8') as f:
+                        contenido = f.read()
+                    doc = Document(
+                        page_content=f"ESTADISTICAS ECUADOR 2022 - {archivo}\n\n{contenido}",
+                        metadata={"source": ruta_csv, "type": "estadisticas_ecuador", "filename": archivo}
+                    )
+                    all_documents.append(doc)
+                except Exception:
+                    pass
 
-    # Divide los documentos en chunks
-    print(f"[INFO] Dividiendo documentos en chunks...")
+    csvs_principales = ["studentInfo.csv", "assessments.csv", "studentAssessment.csv", "vle.csv"]
+    for csv_name in csvs_principales:
+        ruta_csv = os.path.join(DATA_ROOT_PATH, csv_name)
+        if os.path.exists(ruta_csv):
+            try:
+                import pandas as pd
+                df = pd.read_csv(ruta_csv, nrows=100)
+
+                resumen = f"DATASET: {csv_name}\n\n"
+                resumen += f"Columnas: {', '.join(df.columns.tolist())}\n\n"
+                resumen += f"Primeras filas de ejemplo:\n{df.head(10).to_string()}\n\n"
+                resumen += f"Estadísticas descriptivas:\n{df.describe().to_string()}\n"
+
+                doc = Document(
+                    page_content=resumen,
+                    metadata={"source": ruta_csv, "type": "dataset", "filename": csv_name}
+                )
+                all_documents.append(doc)
+            except Exception:
+                pass
+
+    uci_path = os.path.join(DATA_RAW_PATH, "dataset_uci.csv")
+    if os.path.exists(uci_path):
+        try:
+            import pandas as pd
+            df = pd.read_csv(uci_path, nrows=50)
+            resumen = f"DATASET UCI - Datos de desercion universitaria\n\n"
+            resumen += f"Columnas: {', '.join(df.columns.tolist())}\n\n"
+            resumen += f"Primeras filas:\n{df.head(10).to_string()}\n\n"
+            resumen += f"Estadísticas:\n{df.describe().to_string()}\n"
+
+            doc = Document(
+                page_content=resumen,
+                metadata={"source": uci_path, "type": "dataset_uci", "filename": "dataset_uci.csv"}
+            )
+            all_documents.append(doc)
+        except Exception:
+            pass
+
     all_chunks = text_splitter.split_documents(all_documents)
-    print(f"[OK] Total de chunks creados: {len(all_chunks)}")
-    
-    return all_chunks 
-        
-def guardar_en_chroma(chunks):
-    #Creo los embeddings necesarios para guardarlos en el ChromaDB
-    print(f"Guardando {len(chunks)} chunks en ChromaDB...")
+    return all_chunks
 
-    # Filtrar y truncar chunks que excedan el limite
+def guardar_en_chroma(chunks):
+    """Guarda los chunks en ChromaDB"""
     chunks_validos = []
     for chunk in chunks:
         if len(chunk.page_content) > MAX_CHUNK_LENGTH:
             chunk.page_content = chunk.page_content[:MAX_CHUNK_LENGTH]
-        if len(chunk.page_content.strip()) > 0:  # Solo agregar si tiene contenido
+        if len(chunk.page_content.strip()) > 0:
             chunks_validos.append(chunk)
 
-    print(f"  Chunks validos despues de filtrar: {len(chunks_validos)}")
-
-    #Primero tengo que inicializar el modelo de embeddings de mi IA (en este caso, Ollama con nomic-embed-text)
     embeddings = OllamaEmbeddings(model="nomic-embed-text")
 
-    #Procesar en lotes de 200 chunks (balanceado para velocidad y estabilidad)
     batch_size = 200
-    total_batches = (len(chunks_validos) - 1) // batch_size + 1
     for i in range(0, len(chunks_validos), batch_size):
         batch = chunks_validos[i:i+batch_size]
-        print(f"Procesando batch {i//batch_size + 1}/{total_batches} ({len(batch)} chunks)...")
 
         if i == 0:
-            # Primer batch: crear la base de datos
             vectorstore = Chroma.from_documents(
                 documents=batch,
                 embedding=embeddings,
                 persist_directory=CHROMA_PATH
             )
         else:
-            # Batches siguientes: agregar a la base existente
             vectorstore = Chroma(
                 persist_directory=CHROMA_PATH,
                 embedding_function=embeddings
@@ -319,7 +311,7 @@ def guardar_en_chroma(chunks):
     print(f"Base de datos guardada en {CHROMA_PATH}")
 
 if __name__ == "__main__":
-    print("Iniciando proceso de ingesta de documentos...\n")
     chunks = cargar_docs()
+    print(f"Total de chunks: {len(chunks)}")
     guardar_en_chroma(chunks)
-    print("Proceso completado. Base de datos lista.")
+    print("Proceso completado.")

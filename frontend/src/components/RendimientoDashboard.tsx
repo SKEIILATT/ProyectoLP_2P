@@ -60,7 +60,6 @@ export default function RendimientoDashboard() {
     fetchData();
   }, []);
 
-  // Optimización 1: Usar useMemo para cálculos pesados
   const kpis = useMemo(() => {
     if (!data) return { totalMaterias: 0, promedioGeneral: 0, totalEstudiantes: 0 };
     
@@ -74,7 +73,6 @@ export default function RendimientoDashboard() {
     return { totalMaterias, promedioGeneral, totalEstudiantes };
   }, [data]);
 
-  // Optimización 2: Samplear datos para scatter plots (muestra representativa)
   const evaluacionesScatterData = useMemo(() => {
     if (!data) return [];
     
@@ -86,7 +84,6 @@ export default function RendimientoDashboard() {
         id_student: item.id_student
       }));
 
-    // Si hay más de 500 puntos, tomar una muestra representativa
     if (filtered.length > 500) {
       const step = Math.ceil(filtered.length / 500);
       return filtered.filter((_, index) => index % step === 0);
@@ -106,7 +103,6 @@ export default function RendimientoDashboard() {
         id_student: item.id_student
       }));
 
-    // Si hay más de 500 puntos, tomar una muestra representativa
     if (filtered.length > 500) {
       const step = Math.ceil(filtered.length / 500);
       return filtered.filter((_, index) => index % step === 0);

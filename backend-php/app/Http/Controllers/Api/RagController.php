@@ -22,14 +22,14 @@ class RagController extends Controller
 
         $validated = $request->validate([
             'pregunta' => 'required|string|min:3',
-            'modelo' => 'nullable|string|in:tinyllama,mistral,llama3,llama3.1'
+            'modelo' => 'nullable|string|in:llama3,llama3-70b,mixtral,gemma'
         ]);
 
         try {
             // Llamar al servicio Python RAG
             $response = Http::timeout(180)->post("{$this->ragApiUrl}/api/rag/query", [
                 'pregunta' => $validated['pregunta'],
-                'modelo' => $validated['modelo'] ?? 'tinyllama'
+                'modelo' => $validated['modelo'] ?? 'llama3'
             ]);
 
             if ($response->failed()) {
@@ -112,12 +112,12 @@ class RagController extends Controller
         set_time_limit(300);
 
         $validated = $request->validate([
-            'modelo' => 'nullable|string|in:tinyllama,mistral,llama3,llama3.1'
+            'modelo' => 'nullable|string|in:llama3,llama3-70b,mixtral,gemma'
         ]);
 
         try {
             $response = Http::timeout(180)->post("{$this->ragApiUrl}/api/rag/insights", [
-                'modelo' => $validated['modelo'] ?? 'tinyllama'
+                'modelo' => $validated['modelo'] ?? 'llama3'
             ]);
 
             if ($response->failed()) {
