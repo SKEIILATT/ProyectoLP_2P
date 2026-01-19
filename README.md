@@ -125,7 +125,23 @@ ChromaDB + Ollama (Mistral)
 
 ### 2. Módulo de Rendimiento Académico
 
-Pendiente de implementación
+**Dashboard Analítico:**
+- KPIs de rendimiento académico
+- Distribución de aprobados y reprobados
+- Análisis comparativo entre variables académicas
+- Visualizaciones interactivas similares al módulo de abandono
+
+**Chat IA con RAG:**
+- Consultas en lenguaje natural sobre rendimiento académico
+- Respuestas basadas en documentos y datasets académicos
+- Generación de hallazgos automáticos
+- Citación de fuentes utilizadas
+
+**Base de Conocimiento:**
+- Documentos académicos indexados
+- Estadísticas de vectorización
+- Integración completa con el sistema RAG
+
 
 ---
 
@@ -161,32 +177,73 @@ Pendiente de implementación
 
 ```
 ProyectoLP_2P/
-├── backend-php/                 # Laravel API
-│   ├── app/Http/Controllers/Api/
-│   │   ├── AbandonoController.php
-│   │   └── RagController.php
-│   └── routes/api.php
+├── backend-php/                           # Laravel API
+│   ├── app/Http/Controllers/
+│   │   ├── Controller.php
+│   │   ├── RendimientoController.php
+│   │   └── Api/
+│   │       ├── AbandonoController.php
+│   │       └── RagController.php
+│   ├── routes/
+│   │   ├── api.php
+│   │   ├── web.php
+│   │   └── console.php
+│   ├── config/
+│   ├── database/
+│   ├── resources/
+│   ├── storage/
+│   └── composer.json
 │
-├── backend-python/              # Python RAG + Data Science
+├── backend-python/                        # Python RAG + Data Science
 │   ├── data/
-│   │   ├── raw/                # Dataset UCI
-│   │   ├── processed/          # CSVs Ecuador
-│   │   └── analysis/           # Jupyter notebooks
+│   │   ├── raw/                          # Dataset UCI
+│   │   ├── processed/                    # CSVs Ecuador
+│   │   └── analysis/                     # Jupyter notebooks
 │   ├── rag/
-│   │   ├── rag_api.py         # API REST Flask
-│   │   ├── rag_query.py       # Sistema RAG
-│   │   └── rag_ingest.py      # Carga documentos
-│   └── scraping/              # Web scraping
+│   │   ├── rag_api.py                   # API REST Flask
+│   │   ├── rag_query.py                 # Sistema RAG & consultas
+│   │   ├── rag_ingest.py                # Carga documentos
+│   │   ├── documents_raw/               # Documentos fuente
+│   │   ├── knowledge_sources/           # Base de conocimiento
+│   │   └── vectorstore/                 # ChromaDB vector store
+│   ├── scraping/                        # Web scraping
+│   │   ├── estadisticas_ecuador.py
+│   │   ├── scraping_universidades.py
+│   │   ├── papers_recursos.py
+│   │   ├── ingest_scraped_data.py
+│   │   ├── scrapers/                   # Módulos de scraping
+│   │   │   ├── becas_scraper.py
+│   │   │   ├── recursos_scraper.py
+│   │   │   ├── repository_scraper.py
+│   │   │   ├── scholar_scraper.py
+│   │   │   └── __init__.py
+│   │   └── utils/                      # Utilidades
+│   │       └── text_cleaner.py
+│   ├── output/                          # Análisis generados
+│   ├── requirements.txt
+│   └── analisis_rendimiento.py
 │
-├── frontend/                    # React App
+├── frontend/                              # React + TypeScript App
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── Navigation.tsx
+│   │   │   ├── LandingPage.tsx
 │   │   │   ├── AbandonoDashboard.tsx
-│   │   │   └── ChatBot.tsx
-│   │   └── App.tsx
-│   └── package.json
+│   │   │   ├── RendimientoDashboard.tsx
+│   │   │   ├── ChatBot.tsx
+│   │   │   ├── RagKnowledgeBase.tsx
+│   │   │   └── SourceCitation.tsx
+│   │   ├── App.tsx
+│   │   ├── main.tsx
+│   │   └── index.css
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tsconfig.json
+│   ├── tailwind.config.js
+│   └── index.html
 │
+├── docs/                                  # Documentación adicional
+├── composer.bat
 └── README.md
 ```
 
@@ -309,7 +366,10 @@ Proyecto académico - ESPOL 2024/2025
 - Análisis UCI integrado
 - Sistema RAG completamente funcional
 
-**Módulo Rendimiento Académico (Pendiente)**
-- Dataset Open University
-- Dashboard
-- Chat IA
+**Módulo Rendimiento Académico (Completo)**
+- Dashboard analítico con KPIs académicos
+- Visualizaciones interactivas (gráficos comparativos)
+- Chat IA con RAG para consultas académicas
+- Generación de hallazgos automáticos
+- Base de conocimiento integrada
+
