@@ -317,11 +317,34 @@ def generar_insights(vector, modelo="llama3"):
         temperature=0.2
     )
 
-    # Obtener documentos clave
+    # Obtener documentos globales del RAG (no dependiente de query)
     try:
-        docs = vector.similarity_search("estadísticas abandono deserción factores riesgo becas rendimiento", k=10)
+        collection = getattr(vector, "_collection", None)
+        if collection is None:
+            docs = []
+        else:
+            data = collection.get(include=["documents", "metadatas"])
+            raw_docs = zip(
+            data.get("documents", []),
+            data.get("metadatas", [])
+        )
+
+        docs = []
+        seen_sources = set()
+
+        for doc, meta in raw_docs:
+            source = meta.get("source") if meta else None
+
+            if source and source not in seen_sources:
+                docs.append(Document(page_content=doc, metadata=meta))
+                seen_sources.add(source)
+
+            if len(docs) >= 5:  # 1 PDF ≈ 1 aporte
+                break
+
     except Exception:
         docs = []
+
 
     if not docs:
         return {

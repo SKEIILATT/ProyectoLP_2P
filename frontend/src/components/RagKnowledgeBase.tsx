@@ -21,8 +21,9 @@ interface RagStats {
 
 interface InsightsData {
   insights: string[];
-  fuentes_analizadas: number;
+  sources: string[];
 }
+
 
 export default function RagKnowledgeBase() {
   const [stats, setStats] = useState<RagStats | null>(null);
@@ -55,7 +56,7 @@ export default function RagKnowledgeBase() {
   const fetchInsights = async () => {
     try {
       setInsightsLoading(true);
-      const response = await axios.post('http://localhost:8000/api/rag/insights', {
+      const response = await axios.post('http://localhost:5000/api/rag/insights', {
         modelo: 'mistral'
       });
 
@@ -279,7 +280,7 @@ export default function RagKnowledgeBase() {
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <span>Basado en {insights.fuentes_analizadas} fragmentos analizados</span>
+                <span>Basado en {insights.sources.length} fuentes analizadas</span>
               </div>
 
               {insights.insights.map((insight, index) => (
